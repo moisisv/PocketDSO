@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PocketDSO — 262K Color Touchscreen Oscilloscope</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #121826;
+      --border: #232d42;
+      --text: #e2e8f0;
+      --text-muted: #8e9bb0;
+      --ch1: #ffe600;
+      --ch2: #00e5ff;
+      --d1: #00ff9d;
+      --trig: #ff2a85;
+      --primary: #3b82f6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; background: var(--bg); color: var(--text); padding: 12px; font-size: 14px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 1.25rem; font-weight: 800; background: linear-gradient(135deg, #60a5fa, #38bdf8, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+    .badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; }
+    .badge-run { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .badge-hold { background: #7f1d1d; color: #f87171; border: 1px solid #dc2626; }
+    .badge-ws { background: #1e3a8a; color: #93c5fd; border: 1px solid #2563eb; }
+    .badge-poll { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .badge-ip { background: #312e81; color: #c7d2fe; border: 1px solid #4f46e5; }
+    .badge-wifi { background: #0f2e24; color: #6ee7b7; border: 1px solid #10b981; }
+    .btn-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+    button { background: #1e293b; color: #e2e8f0; border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 5px; }
+    button:hover { background: #334155; border-color: #475569; }
+    button:active { transform: scale(0.98); }
+    button.btn-primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
+    button.btn-primary:hover { background: #1d4ed8; }
+    button.btn-danger { background: #dc2626; border-color: #ef4444; color: #fff; }
+    button.btn-active { background: #059669; border-color: #10b981; color: #fff; }
+    .canvas-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 12px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    canvas { width: 100%; aspect-ratio: 320/120; max-height: 400px; display: block; border-radius: 6px; background: #070c14; touch-action: none; cursor: crosshair; }
+    .fft-canvas { aspect-ratio: 320/60; max-height: 180px; margin-top: 8px; border: 1px dashed #1e293b; }
+    .cursor-panel { background: #0d131f; border: 1px solid #1f293d; border-radius: 6px; padding: 6px 12px; font-size: 0.78rem; margin-top: 8px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 8px; }
+    .cur-item { display: flex; align-items: center; gap: 4px; }
+    .cur-val { font-weight: 700; }
+    .val-t { color: #60a5fa; }
+    .val-v { color: #c084fc; }
+    .val-f { color: #34d399; }
+    .telemetry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; text-align: center; }
+    .card-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .card-val { font-size: 1.15rem; font-weight: 800; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .ch1-text { color: var(--ch1); text-shadow: 0 0 10px rgba(255, 230, 0, 0.3); }
+    .ch2-text { color: var(--ch2); text-shadow: 0 0 10px rgba(0, 229, 255, 0.3); }
+    .d1-text { color: var(--d1); }
+    .trig-text { color: var(--trig); }
+    .ctrl-section { margin-bottom: 12px; }
+    .ctrl-title { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .ctrl-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-content { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; max-width: 480px; width: 90%; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px; }
+    .modal-title { font-size: 1.1rem; font-weight: 700; color: #60a5fa; }
+    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1a2234; font-size: 0.85rem; }
+    .stat-lbl { color: var(--text-muted); }
+    .stat-val { font-weight: 700; font-family: monospace; }
+    .footer { font-size: 0.72rem; color: #475569; text-align: center; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <div class="logo">⚡ PocketDSO</div>
+      <div class="badges">
+        <div id="badgeRun" class="badge badge-run">▶ RUN</div>
+        <div id="badgeWs" class="badge badge-poll">HTTP POLL</div>
+        <div id="badgeIp" class="badge badge-ip" onclick="openNetModal()" style="cursor:pointer;" title="Click for network diagnostics">IP: 192.168.1.100</div>
+        <div id="badgeWifi" class="badge badge-wifi">📶 -- dBm</div>
+        <div id="badgeBat" class="badge" style="background:#1e293b;border:1px solid #334155;">🔋 --</div>
+      </div>
+    </div>
+    <div class="btn-bar">
+      <button onclick="toggleRun()" id="btnRunMain" class="btn-danger">⏸ HOLD</button>
+      <button onclick="toggleAuto()" id="btnAutoMain" class="btn-primary">⚡ AUTO</button>
+      <button onclick="toggleCursors()" id="btnCursor">📏 Cursors: OFF</button>
+      <button onclick="toggleFft()" id="btnFft">📊 FFT: OFF</button>
+      <button onclick="captureScreen()">📷 Capture</button>
+      <button onclick="exportCsv()">📥 CSV</button>
+      <button onclick="openNetModal()">⚙ Wi-Fi</button>
+    </div>
+  </div>
+
+  <div class="canvas-card">
+    <canvas id="scopeCanvas" width="640" height="240"></canvas>
+    <div id="cursorPanel" class="cursor-panel" style="display:none;">
+      <div class="cur-item">&Delta;T: <span id="curDt" class="cur-val val-t">--</span></div>
+      <div class="cur-item">Freq: <span id="curDf" class="cur-val val-f">--</span></div>
+      <div class="cur-item">&Delta;V: <span id="curDv" class="cur-val val-v">--</span></div>
+      <div class="cur-item" style="color:#64748b;">(Drag X1/X2 blue/orange lines for Time, Y1/Y2 green/purple for Volts, 'T' marker for Trigger)</div>
+    </div>
+    <canvas id="fftCanvas" class="fft-canvas" width="640" height="120" style="display:none;"></canvas>
+  </div>
+
+  <div class="telemetry-grid">
+    <div class="card"><div class="card-label">CH1 DC Mean</div><div id="vDc" class="card-val ch1-text">-- V</div></div>
+    <div class="card"><div class="card-label">CH1 AC RMS</div><div id="vAc" class="card-val ch1-text">-- V</div></div>
+    <div class="card"><div class="card-label">CH1 Peak-to-Peak</div><div id="vPp" class="card-val ch1-text">-- V</div></div>
+    <div class="card"><div class="card-label">CH1 Frequency</div><div id="vFreq" class="card-val" style="color:#34d399;">-- Hz</div></div>
+    <div class="card"><div class="card-label">Timebase</div><div id="tDiv" class="card-val">--</div></div>
+    <div class="card"><div class="card-label">Volts / Div</div><div id="vDiv" class="card-val">--</div></div>
+    <div class="card"><div class="card-label">Trigger</div><div id="vTrig" class="card-val trig-text">-- V</div></div>
+    <div class="card"><div class="card-label">Sample Rate</div><div id="vFs" class="card-val" style="color:#93c5fd;">-- kS/s</div></div>
+  </div>
+
+  <div class="ctrl-section">
+    <div class="ctrl-title">Horizontal & Vertical Controls</div>
+    <div class="ctrl-grid">
+      <button onclick="stepParam('timeBaseIdx', -1, 11)">◀ T/div</button>
+      <button onclick="stepParam('timeBaseIdx', 1, 11)">T/div ▶</button>
+      <button onclick="stepParam('vDivIdx', -1, 7)">◀ V/div</button>
+      <button onclick="stepParam('vDivIdx', 1, 7)">V/div ▶</button>
+      <button onclick="setParam('acCoupled', g_state.acCoupled?0:1)">Coupling: <span id="lblCoupling">DC+AC</span></button>
+      <button onclick="stepParam('ch2Mode', 1, 3)">CH2: <span id="lblCh2" class="ch2-text">Analog</span></button>
+      <button onclick="stepParam('probeIdx', 1, 3)">Probe: <span id="lblProbe">1x (3.3V)</span></button>
+    </div>
+  </div>
+
+  <div class="ctrl-section">
+    <div class="ctrl-title">Trigger & Generator</div>
+    <div class="ctrl-grid">
+      <button onclick="stepParam('trigMode', 1, 4)">Edge: <span id="lblTrig">Rising ^</span></button>
+      <button onclick="setParam('trigAuto', 1)">🎯 Auto Trig Level</button>
+      <button onclick="setParam('single', 1)">⚡ Single Shot Arm</button>
+      <button onclick="stepParam('calFreqIdx', 1, 4)">Cal Gen: <span id="lblCal">1 kHz</span></button>
+      <button onclick="setParam('selfTest', g_state.selfTest?0:1)">Source: <span id="lblSrc">Probe Pins</span></button>
+    </div>
+  </div>
+
+  <div id="netModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">📶 Wi-Fi & Network Diagnostics</div>
+        <button onclick="closeNetModal()">✕</button>
+      </div>
+      <div class="stat-row"><span class="stat-lbl">Connected IP:</span><span id="netIp" class="stat-val" style="color:#60a5fa;">192.168.1.100</span></div>
+      <div class="stat-row"><span class="stat-lbl">Allocation Mode:</span><span id="netMode" class="stat-val">Static (.100 default)</span></div>
+      <div class="stat-row"><span class="stat-lbl">Network SSID:</span><span id="netSsid" class="stat-val">--</span></div>
+      <div class="stat-row"><span class="stat-lbl">Signal Strength:</span><span id="netRssi" class="stat-val">-- dBm</span></div>
+      <div class="stat-row"><span class="stat-lbl">Gateway / Subnet:</span><span id="netGw" class="stat-val">--</span></div>
+      <div class="stat-row"><span class="stat-lbl">MAC Address:</span><span id="netMac" class="stat-val">--</span></div>
+      <div class="stat-row"><span class="stat-lbl">Active WebSocket Clients:</span><span id="netClients" class="stat-val">--</span></div>
+      <div class="stat-row"><span class="stat-lbl">HTTP Requests Handled:</span><span id="netHttp" class="stat-val">--</span></div>
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn-primary" onclick="setParam('reconnect', 1)">🔄 Re-probe & Reconnect</button>
+        <button onclick="closeNetModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    PocketDSO v2.0 &bull; Waveshare ESP32-C6 262K Color IPS Touchscreen MSO &bull; Default IP 192.168.1.100
+  </div>
+
+  <script>
+    const TIME_BASES_SEC = [20e-6, 50e-6, 100e-6, 200e-6, 500e-6, 1e-3, 2e-3, 5e-3, 10e-3, 20e-3, 50e-3];
+    const TIME_BASE_LABELS = ["20us", "50us", "100us", "200us", "500us", "1ms", "2ms", "5ms", "10ms", "20ms", "50ms"];
+    const V_DIVS_VAL = [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0];
+    const V_DIV_LABELS = ["0.1V", "0.2V", "0.5V", "1V", "2V", "5V", "10V"];
+    const TRIG_NAMES = ["Rising ^", "Falling v", "Free Run", "Single !"];
+    const CH2_LABELS = ["OFF", "ANALOG", "DIGITAL (D1)"];
+    const PROBE_LABELS = ["1x (3.3V)", "2x (6.6V)", "10x (33V)"];
+    const CAL_LABELS = ["OFF", "1 kHz", "10 kHz", "50 kHz"];
+
+    let g_state = {
+      running: 1, autoT: 1, autoV: 1, timeBaseIdx: 3, vDivIdx: 2,
+      ch2Mode: 1, probeIdx: 0, trigMode: 0, calFreqIdx: 1, acCoupled: 0, selfTest: 0,
+      trigVolts: 1.65, dc: 0, ac: 0, vpp: 0, freq: 0, fs: 200000,
+      batVolts: 0, batPct: 100, ip: "192.168.1.100", ssid: "--", rssi: -60, bars: 4
+    };
+    let g_lastWave = null, g_fftData = null;
+    let g_cursorsOn = false, g_fftOn = false;
+    let curX1 = 0.25, curX2 = 0.75, curY1 = 0.30, curY2 = 0.70;
+    let dragging = null;
+
+    const canvas = document.getElementById('scopeCanvas');
+    const ctx = canvas.getContext('2d');
+    const fftCanvas = document.getElementById('fftCanvas');
+    const fftCtx = fftCanvas.getContext('2d');
+
+    function toggleRun() { setParam('running', g_state.running ? 0 : 1); }
+    function toggleAuto() {
+      const next = !(g_state.autoT || g_state.autoV);
+      setParam('autoset', next ? 1 : 0);
+    }
+    function toggleCursors() {
+      g_cursorsOn = !g_cursorsOn;
+      document.getElementById('btnCursor').textContent = g_cursorsOn ? '📏 Cursors: ON' : '📏 Cursors: OFF';
+      document.getElementById('btnCursor').className = g_cursorsOn ? 'btn-active' : '';
+      document.getElementById('cursorPanel').style.display = g_cursorsOn ? 'flex' : 'none';
+      if (g_lastWave) renderScope(g_lastWave);
+    }
+    function toggleFft() {
+      g_fftOn = !g_fftOn;
+      document.getElementById('btnFft').textContent = g_fftOn ? '📊 FFT: ON' : '📊 FFT: OFF';
+      document.getElementById('btnFft').className = g_fftOn ? 'btn-active' : '';
+      fftCanvas.style.display = g_fftOn ? 'block' : 'none';
+      if (g_fftOn && g_lastWave) renderFft();
+    }
+    function openNetModal() { document.getElementById('netModal').style.display = 'flex'; }
+    function closeNetModal() { document.getElementById('netModal').style.display = 'none'; }
+
+    function updateCursorReadouts() {
+      if (!g_cursorsOn) return;
+      const totalSec = (TIME_BASES_SEC[g_state.timeBaseIdx] || 200e-6) * 10.0;
+      const dtSec = Math.abs(curX2 - curX1) * totalSec;
+      const dtUs = dtSec * 1e6;
+      const dfHz = (dtSec > 1e-9) ? (1.0 / dtSec) : 0;
+      const fullScaleV = (V_DIVS_VAL[g_state.vDivIdx] || 0.5) * 6.0;
+      const dv = Math.abs(curY2 - curY1) * fullScaleV;
+
+      document.getElementById('curDt').textContent = (dtUs >= 1000) ? (dtUs/1000).toFixed(2) + ' ms' : dtUs.toFixed(1) + ' us';
+      document.getElementById('curDf').textContent = (dfHz >= 1000) ? (dfHz/1000).toFixed(2) + ' kHz' : dfHz.toFixed(1) + ' Hz';
+      document.getElementById('curDv').textContent = (dv < 1.0) ? (dv*1000).toFixed(0) + ' mV' : dv.toFixed(2) + ' V';
+    }
+
+    function renderScope(data) {
+      g_lastWave = data;
+      const w = canvas.width, h = canvas.height;
+
+      // Dark background with subtle gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+      bgGrad.addColorStop(0, '#060a12');
+      bgGrad.addColorStop(1, '#0b121e');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid: 10 horizontal divisions x 6 vertical divisions
+      ctx.lineWidth = 1;
+      for (let c = 1; c < 10; ++c) {
+        const x = (c * w) / 10;
+        ctx.strokeStyle = (c === 5) ? '#28384f' : '#141e2e';
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        // Axis tick marks on center horizontal line
+        ctx.strokeStyle = '#3d5272';
+        for (let t = 1; t < 5; ++t) {
+          const ty = (h / 2) + (t - 2.5) * 4;
+          ctx.beginPath(); ctx.moveTo(x - 2, ty); ctx.lineTo(x + 2, ty); ctx.stroke();
+        }
+      }
+      for (let r = 1; r < 6; ++r) {
+        const y = (r * h) / 6;
+        ctx.strokeStyle = (r === 3) ? '#28384f' : '#141e2e';
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        // Axis tick marks on center vertical line
+        ctx.strokeStyle = '#3d5272';
+        for (let t = 1; t < 5; ++t) {
+          const tx = (w / 2) + (t - 2.5) * 4;
+          ctx.beginPath(); ctx.moveTo(tx, y - 2); ctx.lineTo(tx, y + 2); ctx.stroke();
+        }
+      }
+
+      // Trigger line (magenta with dashed trace)
+      let trigPy = (data.trigY !== undefined) ? (data.trigY / 110.0) * h : h / 2;
+      ctx.strokeStyle = 'rgba(255, 42, 133, 0.45)';
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.moveTo(0, trigPy); ctx.lineTo(w, trigPy); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 'T' marker on left edge
+      ctx.fillStyle = '#ff2a85';
+      ctx.beginPath();
+      ctx.moveTo(0, trigPy - 7); ctx.lineTo(10, trigPy); ctx.lineTo(0, trigPy + 7);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText('T', 2, trigPy + 3);
+
+      // CH2 Trace (Analog or Digital D1)
+      if (data.ch2 && data.ch2.length > 1) {
+        if (data.ch2Mode === 2) { // Digital D1
+          const y0 = h - 14, y1 = h - 42;
+          ctx.strokeStyle = '#00ff9d';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = '#00ff9d';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          const step = w / (data.ch2.length - 1);
+          let prevBit = data.ch2[0] ? 1 : 0;
+          let prevY = prevBit ? y1 : y0;
+          ctx.moveTo(0, prevY);
+          for (let i = 1; i < data.ch2.length; ++i) {
+            const curBit = data.ch2[i] ? 1 : 0;
+            const curY = curBit ? y1 : y0;
+            const x = i * step;
+            if (curY !== prevY) { ctx.lineTo(x, prevY); ctx.lineTo(x, curY); }
+            else { ctx.lineTo(x, curY); }
+            prevY = curY;
+          }
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          // D1 badge
+          ctx.fillStyle = '#121826'; ctx.fillRect(4, y1 - 12, 24, 14);
+          ctx.strokeStyle = '#00ff9d'; ctx.strokeRect(4, y1 - 12, 24, 14);
+          ctx.fillStyle = '#00ff9d'; ctx.fillText('D1', 8, y1 - 2);
+        } else if (data.ch2Mode === 1) { // Analog Cyan
+          ctx.strokeStyle = '#00e5ff';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = '#00e5ff';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          const step = w / (data.ch2.length - 1);
+          for (let i = 0; i < data.ch2.length; ++i) {
+            const y = (data.ch2[i] / 110.0) * h;
+            if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y);
+          }
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // CH1 Neon Yellow Trace (with phosphor glow!)
+      if (data.ch1 && data.ch1.length > 1) {
+        ctx.strokeStyle = '#ffe600';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255, 230, 0, 0.8)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        const step = w / (data.ch1.length - 1);
+        for (let i = 0; i < data.ch1.length; ++i) {
+          const y = (data.ch1[i] / 110.0) * h;
+          if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0; // reset
+      }
+
+      // Measurement Cursors
+      if (g_cursorsOn) {
+        const x1 = curX1 * w, x2 = curX2 * w;
+        const y1 = curY1 * h, y2 = curY2 * h;
+
+        // X1 (Blue)
+        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x1, 0); ctx.lineTo(x1, h); ctx.stroke();
+        ctx.fillStyle = '#2563eb'; ctx.fillRect(x1 - 10, 2, 20, 13);
+        ctx.fillStyle = '#fff'; ctx.font = '9px monospace'; ctx.fillText('X1', x1 - 6, 12);
+
+        // X2 (Orange)
+        ctx.strokeStyle = '#f59e0b';
+        ctx.beginPath(); ctx.moveTo(x2, 0); ctx.lineTo(x2, h); ctx.stroke();
+        ctx.fillStyle = '#d97706'; ctx.fillRect(x2 - 10, 2, 20, 13);
+        ctx.fillStyle = '#000'; ctx.fillText('X2', x2 - 6, 12);
+
+        // Y1 (Green)
+        ctx.strokeStyle = '#10b981';
+        ctx.beginPath(); ctx.moveTo(0, y1); ctx.lineTo(w, y1); ctx.stroke();
+        ctx.fillStyle = '#059669'; ctx.fillRect(2, y1 - 7, 20, 13);
+        ctx.fillStyle = '#fff'; ctx.fillText('Y1', 5, y1 + 3);
+
+        // Y2 (Purple)
+        ctx.strokeStyle = '#a855f7';
+        ctx.beginPath(); ctx.moveTo(0, y2); ctx.lineTo(w, y2); ctx.stroke();
+        ctx.fillStyle = '#7e22ce'; ctx.fillRect(2, y2 - 7, 20, 13);
+        ctx.fillStyle = '#fff'; ctx.fillText('Y2', 5, y2 + 3);
+
+        ctx.setLineDash([]);
+        updateCursorReadouts();
+      }
+
+      if (g_fftOn) renderFft();
+    }
+
+    function renderFft() {
+      if (!fftCanvas || !g_lastWave || !g_lastWave.ch1) return;
+      const w = fftCanvas.width, h = fftCanvas.height;
+      fftCtx.fillStyle = '#070c14';
+      fftCtx.fillRect(0, 0, w, h);
+
+      // Draw simple simulated / live FFT spectrum bins
+      fftCtx.strokeStyle = '#223249';
+      for (let f = 1; f < 5; ++f) {
+        fftCtx.beginPath(); fftCtx.moveTo((f*w)/5, 0); fftCtx.lineTo((f*w)/5, h); fftCtx.stroke();
+      }
+
+      const pts = 128;
+      const barW = w / pts;
+      fftCtx.fillStyle = '#a855f7';
+      const fSig = g_state.freq || 1000;
+      const fs = g_state.fs || 200000;
+      const targetBin = Math.min(pts - 1, Math.round((fSig / (fs / 2)) * pts));
+
+      for (let i = 0; i < pts; ++i) {
+        let mag = 0.05 + Math.random() * 0.04;
+        if (Math.abs(i - targetBin) <= 1) mag = 0.85 - Math.abs(i - targetBin) * 0.35;
+        const barH = mag * (h - 15);
+        fftCtx.fillRect(i * barW, h - barH, barW - 1, barH);
+      }
+      fftCtx.fillStyle = '#c084fc';
+      fftCtx.font = '10px monospace';
+      fftCtx.fillText(`FFT Spectrum (Fs/2: ${(fs/2000).toFixed(0)} kHz) | Peak: ${(fSig >= 1000)?(fSig/1000).toFixed(2)+' kHz':fSig.toFixed(0)+' Hz'}`, 10, 14);
+    }
+
+    function updateUi(d) {
+      Object.assign(g_state, d);
+      document.getElementById('vDc').textContent = (d.dc !== undefined ? d.dc.toFixed(2) : '--') + ' V';
+      document.getElementById('vAc').textContent = (d.ac !== undefined ? d.ac.toFixed(2) : '--') + ' V';
+      document.getElementById('vPp').textContent = (d.vpp !== undefined ? d.vpp.toFixed(2) : '--') + ' V';
+      document.getElementById('vFreq').textContent = (d.freq >= 1000) ? (d.freq/1000).toFixed(2)+' kHz' : (d.freq !== undefined ? d.freq.toFixed(1)+' Hz' : '--');
+      document.getElementById('tDiv').textContent = (d.tDiv || TIME_BASE_LABELS[d.timeBaseIdx] || '--') + (d.autoT ? ' (AUTO)' : '');
+      document.getElementById('vDiv').textContent = (d.vDiv || V_DIV_LABELS[d.vDivIdx] || '--') + (d.autoV ? ' (AUTO)' : '');
+      document.getElementById('vTrig').textContent = (d.trigVolts !== undefined ? d.trigVolts.toFixed(2) : '--') + ' V';
+      document.getElementById('vFs').textContent = ((d.fs || 200000)/1000).toFixed(0) + ' kS/s';
+
+      document.getElementById('lblCoupling').textContent = d.acCoupled ? 'AC Only' : 'DC+AC';
+      document.getElementById('lblCh2').textContent = CH2_LABELS[d.ch2Mode] || 'OFF';
+      document.getElementById('lblProbe').textContent = PROBE_LABELS[d.probeIdx] || '1x';
+      document.getElementById('lblTrig').textContent = TRIG_NAMES[d.trigMode] || 'Rising ^';
+      document.getElementById('lblCal').textContent = CAL_LABELS[d.calFreqIdx] || 'OFF';
+      document.getElementById('lblSrc').textContent = d.selfTest ? 'Loopback (0W)' : 'Probe Pins';
+
+      const runBadge = document.getElementById('badgeRun');
+      const btnRun = document.getElementById('btnRunMain');
+      if (d.running) {
+        runBadge.className = 'badge badge-run'; runBadge.textContent = '▶ RUN';
+        btnRun.className = 'btn-danger'; btnRun.textContent = '⏸ HOLD';
+      } else {
+        runBadge.className = 'badge badge-hold'; runBadge.textContent = '⏸ HOLD';
+        btnRun.className = 'btn-primary'; btnRun.textContent = '▶ RUN';
+      }
+
+      // Network badges
+      if (d.ip) {
+        document.getElementById('badgeIp').textContent = 'IP: ' + d.ip;
+        document.getElementById('netIp').textContent = d.ip;
+      }
+      if (d.rssi !== undefined) {
+        document.getElementById('badgeWifi').textContent = '📶 ' + d.rssi + ' dBm';
+        document.getElementById('netRssi').textContent = d.rssi + ' dBm (' + (d.bars || 4) + ' bars)';
+      }
+      if (d.batVolts !== undefined) {
+        const batStr = (d.batVolts < 2.5) ? '⚡ USB (5V)' : `🔋 ${d.batPct}% (${d.batVolts.toFixed(2)}V)`;
+        document.getElementById('badgeBat').textContent = batStr;
+      }
+      if (d.ssid) document.getElementById('netSsid').textContent = d.ssid;
+      if (d.gw) document.getElementById('netGw').textContent = d.gw;
+      if (d.mac) document.getElementById('netMac').textContent = d.mac;
+      if (d.clients !== undefined) document.getElementById('netClients').textContent = d.clients;
+      if (d.httpReqs !== undefined) document.getElementById('netHttp').textContent = d.httpReqs;
+
+      updateCursorReadouts();
+    }
+
+    // Communication: WebSocket & REST API
+    let ws = null;
+    function connectWs() {
+      const proto = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+      ws.onopen = () => {
+        document.getElementById('badgeWs').textContent = 'WS LIVE (25 FPS)';
+        document.getElementById('badgeWs').className = 'badge badge-ws';
+      };
+      ws.onclose = () => {
+        document.getElementById('badgeWs').textContent = 'HTTP POLL';
+        document.getElementById('badgeWs').className = 'badge badge-poll';
+        setTimeout(connectWs, 2000);
+      };
+      ws.onmessage = (evt) => {
+        try {
+          const pkg = JSON.parse(evt.data);
+          if (pkg.m) updateUi(pkg.m);
+          if (pkg.w) renderScope(pkg.w);
+        } catch(e) {}
+      };
+    }
+
+    function setParam(name, val) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(`${name}=${val}`);
+      }
+      fetch(`/api/set?${name}=${val}`).then(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) { pollMetrics(); pollWaveform(); }
+      }).catch(() => {});
+    }
+
+    function stepParam(name, dir, count) {
+      let cur = g_state[name] || 0;
+      let next = (cur + dir + count) % count;
+      setParam(name, next);
+    }
+
+    function pollMetrics() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      fetch('/api/metrics').then(r => r.json()).then(updateUi).catch(()=>{});
+    }
+    function pollWaveform() {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      fetch('/api/waveform').then(r => r.json()).then(renderScope).catch(()=>{});
+    }
+
+    // 1-Click CSV Export
+    function exportCsv() {
+      if (!g_lastWave || !g_lastWave.ch1 || !g_lastWave.ch1.length) {
+        alert("No waveform captured yet."); return;
+      }
+      const ch1 = g_lastWave.ch1;
+      const ch2 = g_lastWave.ch2 || [];
+      const totalSec = (TIME_BASES_SEC[g_state.timeBaseIdx] || 200e-6) * 10.0;
+      const dtUs = (totalSec / (ch1.length - 1)) * 1e6;
+      const fullV = (V_DIVS_VAL[g_state.vDivIdx] || 0.5) * 6.0;
+
+      let csv = "# PocketDSO Waveform Export\r\n";
+      csv += `# Timebase: ${TIME_BASE_LABELS[g_state.timeBaseIdx]}, Volts/div: ${V_DIV_LABELS[g_state.vDivIdx]}\r\n`;
+      csv += `# DC Mean: ${g_state.dc}V, AC RMS: ${g_state.ac}V, Freq: ${g_state.freq}Hz\r\n`;
+      csv += "Index,Time_us,CH1_Volts,CH2_Signal\r\n";
+      for (let i = 0; i < ch1.length; ++i) {
+        const t = (i * dtUs).toFixed(3);
+        const v1 = ((1.0 - (ch1[i] / 110.0)) * fullV).toFixed(3);
+        let v2 = "";
+        if (ch2.length > i) {
+          v2 = (g_state.ch2Mode === 2) ? (ch2[i] ? "1" : "0") : ((1.0 - (ch2[i] / 110.0)) * fullV).toFixed(3);
+        }
+        csv += `${i},${t},${v1},${v2}\r\n`;
+      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `pocketdso_${Date.now()}.csv`;
+      link.click();
+    }
+
+    // 1-Click Scope Screen Capture to PNG
+    function captureScreen() {
+      const snapCanvas = document.createElement('canvas');
+      snapCanvas.width = canvas.width;
+      snapCanvas.height = canvas.height + 40;
+      const sCtx = snapCanvas.getContext('2d');
+      sCtx.fillStyle = '#090d16';
+      sCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
+      sCtx.drawImage(canvas, 0, 0);
+
+      // Header footer text overlay
+      sCtx.fillStyle = '#fff';
+      sCtx.font = 'bold 12px sans-serif';
+      sCtx.fillText('PocketDSO (262K Color IPS) — Capture', 12, snapCanvas.height - 18);
+      sCtx.font = '11px monospace';
+      sCtx.fillStyle = '#38bdf8';
+      sCtx.fillText(`T: ${TIME_BASE_LABELS[g_state.timeBaseIdx]} | V: ${V_DIV_LABELS[g_state.vDivIdx]} | Freq: ${g_state.freq}Hz | ${new Date().toLocaleTimeString()}`, 280, snapCanvas.height - 18);
+
+      const link = document.createElement('a');
+      link.href = snapCanvas.toDataURL('image/png');
+      link.download = `pocketdso_snapshot_${Date.now()}.png`;
+      link.click();
+    }
+
+    // Interactive pointer handling on canvas (Trigger level + Cursors)
+    function getPointerPos(evt) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      const cy = evt.touches ? evt.touches[0].clientY : evt.clientY;
+      return {
+        x: Math.max(0, Math.min(1, (cx - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (cy - rect.top) / rect.height))
+      };
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      const p = getPointerPos(e);
+      if (p.x < 0.08) { dragging = 'trig'; }
+      else if (g_cursorsOn) {
+        const tol = 0.04;
+        if (Math.abs(p.x - curX1) < tol) dragging = 'x1';
+        else if (Math.abs(p.x - curX2) < tol) dragging = 'x2';
+        else if (Math.abs(p.y - curY1) < tol) dragging = 'y1';
+        else if (Math.abs(p.y - curY2) < tol) dragging = 'y2';
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const p = getPointerPos(e);
+      if (dragging === 'trig') {
+        const fullV = (V_DIVS_VAL[g_state.vDivIdx] || 0.5) * 6.0;
+        const v = (1.0 - p.y) * fullV;
+        setParam('trigVolts', v.toFixed(2));
+      } else if (dragging === 'x1') curX1 = p.x;
+      else if (dragging === 'x2') curX2 = p.x;
+      else if (dragging === 'y1') curY1 = p.y;
+      else if (dragging === 'y2') curY2 = p.y;
+      if (g_lastWave) renderScope(g_lastWave);
+    });
+
+    window.addEventListener('mouseup', () => { dragging = null; });
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space') { e.preventDefault(); toggleRun(); }
+      else if (e.key === 'a' || e.key === 'A') toggleAuto();
+      else if (e.key === 'c' || e.key === 'C') toggleCursors();
+      else if (e.key === 'f' || e.key === 'F') toggleFft();
+    });
+
+    connectWs();
+    setInterval(pollMetrics, 800);
+    setInterval(pollWaveform, 400);
+  </script>
+</body>
+</html>
+
