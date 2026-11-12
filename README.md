@@ -250,6 +250,44 @@ PocketDSO comes configured with a ready-to-use [`platformio.ini`](platformio.ini
 
 ---
 
+### Option C: Using Docker (Zero-Install Firmware Build)
+
+If you do not want to install PlatformIO or Arduino IDE locally, you can compile the firmware and generate a single merged flashable image inside Docker using [`Dockerfile`](Dockerfile), [`docker-compose.yml`](docker-compose.yml), and [`docker-entrypoint.sh`](docker-entrypoint.sh):
+
+1. *(Optional)* Open [`oscilloscope/wifi_config.h`](oscilloscope/wifi_config.h) to set your Wi-Fi SSID and password before building.
+2. Build the firmware and merge the bootloader, partition table (`default_8MB.csv`), and application binary:
+   ```bash
+   docker compose up --build
+   ```
+3. Once complete, the unified flashable binary is written to:
+   - `firmware/firmware-merged.bin` *(single-file image flashed at offset `0x0`, configured for 8MB flash)*
+   - Component binaries remain in `.pio/build/esp32-c6-devkitm-1/`
+4. Rebuilds reuse the `pio_cache` Docker volume for fast incremental compilation. To clean build artifacts:
+   ```bash
+   docker compose run --rm builder clean
+   ```
+
+---
+
+### Option D: Browser Flashing with ESPHome Web (`web.esphome.io`)
+
+You can flash `firmware/firmware-merged.bin` (from Option C, or a prebuilt merged release binary) directly from your browser without installing any flashing tools:
+
+1. Open **[https://web.esphome.io/](https://web.esphome.io/)** in **Google Chrome** or **Microsoft Edge** *(Web Serial API required)*.
+2. Connect the **Waveshare ESP32-C6-Touch-LCD-1.47-M** to your computer using a data-capable USB-C cable.
+3. Click **Connect** and select your board's serial port (for example `COM*` on Windows or `/dev/cu.usbmodem*` / `/dev/ttyACM*` on macOS/Linux).
+4. Click **Install**, select **`firmware/firmware-merged.bin`**, and confirm to flash the unified image starting at offset `0x0`.
+5. Once flashing finishes, press the onboard **`RESET`** button if the board does not reboot automatically.
+
+> [!TIP]
+> **CLI Alternative**: If you prefer flashing the unified binary with `esptool` from a terminal, write it to offset `0x0`:
+> ```bash
+> esptool --chip esp32c6 write_flash 0x0 firmware/firmware-merged.bin
+> ```
+> If the board does not enter download mode automatically, hold **`BOOT`**, tap **`RESET`**, and release **`BOOT`** before clicking **Connect** or running `esptool`.
+
+---
+
 ## 7. Web UI Remote Control & Real-Time Browser Dashboard
 
 PocketDSO includes a fully self-contained, high-performance Web Application served directly from the ESP32-C6 Flash memory (`PROGMEM`). You do **not** need an internet connection, Node.js, or external cloud servers—the ESP32 acts as an embedded web server running right on your local Wi-Fi network.
@@ -629,6 +667,9 @@ PocketDSO/
 ├── DISCLAIMER.md                   # Detailed legal and hardware accuracy disclaimer
 ├── README.md                       # Comprehensive project documentation and guides
 ├── platformio.ini                  # PlatformIO configuration pointing to oscilloscope/
+├── Dockerfile                      # Containerized PlatformIO + esptool build environment
+├── docker-compose.yml              # Docker Compose service with cached toolchain volume
+├── docker-entrypoint.sh            # Builds firmware and merges binaries into firmware/firmware-merged.bin
 ├── electronics_schematic.png       # Complete hardware schematic and probe divider circuits
 ├── ui_finger_friendly.png          # UI geometry and touch-zone ergonomic reference
 ├── screenshot.js                   # Zero-dependency Node.js Wi-Fi screenshot grabber & PNG decoder

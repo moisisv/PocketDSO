@@ -1,0 +1,16 @@
+services:
+  builder:
+    build: .
+    image: pocket-dso-builder
+    entrypoint: ["/workspace/docker-entrypoint.sh"]
+    command: ["build"]
+    volumes:
+      # Mount the project directory to read source code and write compiled binaries
+      - .:/workspace
+      # Cache downloaded toolchains, platforms, and libraries so rebuilds are fast
+      - pio_cache:/root/.platformio
+    working_dir: /workspace
+
+volumes:
+  pio_cache:
+
