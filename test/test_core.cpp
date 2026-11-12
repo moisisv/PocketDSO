@@ -230,6 +230,7 @@ int main() {
         // Top bar buttons
         assert(hitTestMain(270, 10) == ACT_OPEN_MENU);
         assert(hitTestMain(230, 10) == ACT_OPEN_NET);
+        assert(hitTestMain(210, 10) == ACT_OPEN_SYS);
         assert(hitTestMain(180, 10) == ACT_OPEN_FFT);
         // Chart drag
         assert(hitTestMain(100, 50) == ACT_CHART_TOUCH);
@@ -241,6 +242,7 @@ int main() {
         assert(hitTestSettings(TAB_SCOPE, 60, 10) == ACT_TAB_TRIG);
         assert(hitTestSettings(TAB_SCOPE, 160, 10) == ACT_TAB_NET);
         assert(hitTestSettings(TAB_SCOPE, 280, 10) == ACT_CLOSE_MENU);
+        assert(hitTestSettings(TAB_SCOPE, 250, 28) == ACT_CLOSE_MENU);
 
         // Standalone FFT Screen hit-testing
         assert(hitTestFft(20, 10) == ACT_CLOSE_FFT);          // [◀ SCOPE] top

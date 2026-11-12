@@ -32,7 +32,7 @@
 #include <string.h>
 #include <math.h>
 
-#define DSO_FW_VERSION "2.0.0"
+#define DSO_FW_VERSION "2.1.0"
 
 namespace dso {
 
@@ -58,10 +58,11 @@ constexpr float    PRE_TRIGGER_FRAC = 0.10f; // trigger point sits 1 div from th
 constexpr int16_t SAFE_X     = 10;
 constexpr int16_t TOP_BTN_Y  = 4, TOP_BTN_H = 18;
 constexpr int16_t AUTO_BADGE_X = SAFE_X, AUTO_BADGE_W = 34;
-constexpr int16_t FFT_BTN_X  = 176, FFT_BTN_W = 36;
-constexpr int16_t WIFI_ZONE_X = 216, WIFI_ZONE_W = 36; // tap -> network page
-constexpr int16_t MENU_BTN_X = LCD_W - SAFE_X - 54, MENU_BTN_Y = TOP_BTN_Y, MENU_BTN_W = 54, MENU_BTN_H = TOP_BTN_H;
-constexpr int16_t STATUS_ICONS_X = WIFI_ZONE_X;
+constexpr int16_t FFT_BTN_X   = 166, FFT_BTN_W = 32;
+constexpr int16_t BAT_ZONE_X  = 200, BAT_ZONE_W = 24; // tap -> power / sys page
+constexpr int16_t WIFI_ZONE_X = 226, WIFI_ZONE_W = 26; // tap -> network page
+constexpr int16_t MENU_BTN_X  = LCD_W - SAFE_X - 54, MENU_BTN_Y = TOP_BTN_Y, MENU_BTN_W = 54, MENU_BTN_H = TOP_BTN_H;
+constexpr int16_t STATUS_ICONS_X = BAT_ZONE_X;
 constexpr int16_t FFT_BACK_BTN_X = SAFE_X, FFT_BACK_BTN_W = 56; // FFT screen "< SCOPE"
 constexpr int16_t BOT_BTN_Y = LCD_H - BOT_BAR_H + 2;
 constexpr int16_t BOT_BTN_H = 34;
@@ -741,9 +742,12 @@ inline uint8_t bestVdivFor(float spanVolts) {
 }
 
 // Called a few times per second. Mutates only the "auto" controlled fields.
-inline void autoScale(Settings& s, const Metrics& m) {
+// m2 (optional): CH2 metrics, so Auto Volts never clips the CH2 trace.
+inline void autoScale(Settings& s, const Metrics& m, const Metrics* m2 = nullptr) {
   if (s.autoVolts) {
-    float span = s.acCoupled ? (m.vpp * 1.35f) : (fmaxf(m.vmax, 0.5f) * 1.25f);
+    const float vpp  = m2 ? fmaxf(m.vpp,  m2->vpp)  : m.vpp;
+    const float vmax = m2 ? fmaxf(m.vmax, m2->vmax) : m.vmax;
+    float span = s.acCoupled ? (vpp * 1.35f) : (fmaxf(vmax, 0.5f) * 1.25f);
     s.vDivIdx = bestVdivFor(span);
   }
   // Trigger level follows the waveform midpoint unless the user placed it.
@@ -755,7 +759,7 @@ inline void autoScale(Settings& s, const Metrics& m) {
       s.timeBaseIdx = bestTimebaseFor(m.freq);
     } else if (m.vpp >= 0.35f) {
       // Real large-amplitude signal present with no full period in window -> hunt slower
-      if (s.timeBaseIdx < 7) s.timeBaseIdx++;
+      if (s.timeBaseIdx < TB_HUNT_MAX) s.timeBaseIdx++;
     } else {
       s.timeBaseIdx = TB_DC_IDX; // flat DC / open probe noise: fast 1 ms/div sweep
     }
@@ -1000,6 +1004,7 @@ enum Action : uint8_t {
   ACT_CH2_NEXT, ACT_SOURCE_TOGGLE, ACT_CAL_NEXT,
   ACT_NET_RECONNECT,
   ACT_BRIGHT_NEXT, ACT_FACTORY_RESET,
+  ACT_OPEN_SYS,
   ACT_COUNT
 };
 
@@ -1024,6 +1029,7 @@ inline Action hitTestMain(int16_t x, int16_t y) {
   if (y < TOP_BAR_H) {
     if (x >= MENU_BTN_X - 2) return ACT_OPEN_MENU;
     if (x >= WIFI_ZONE_X) return ACT_OPEN_NET;
+    if (x >= BAT_ZONE_X) return ACT_OPEN_SYS;
     if (x >= FFT_BTN_X - 8) return ACT_OPEN_FFT;
     if (x < AUTO_BADGE_X + AUTO_BADGE_W + 2) return ACT_TOGGLE_AUTO;
     return ACT_NONE;
@@ -1042,6 +1048,7 @@ inline Action hitTestFft(int16_t x, int16_t y) {
     if (x < FFT_BACK_BTN_X + FFT_BACK_BTN_W + 6) return ACT_CLOSE_FFT; // [< SCOPE]
     if (x >= MENU_BTN_X - 2) return ACT_OPEN_MENU;
     if (x >= WIFI_ZONE_X) return ACT_OPEN_NET;
+    if (x >= BAT_ZONE_X) return ACT_OPEN_SYS;
     return ACT_NONE;
   }
   if (y >= LCD_H - BOT_BAR_H) {
@@ -1082,7 +1089,9 @@ inline TileActs tileActions(uint8_t tab, uint8_t tile) {
 }
 
 inline Action hitTestSettings(uint8_t tab, int16_t x, int16_t y) {
-  if (y < TAB_H + 2) {
+  // Generous touch zone for the DONE button in the top-right corner
+  if (x >= (DONE_BTN_X - 10) && y <= 32) return ACT_CLOSE_MENU;
+  if (y < TAB_H + 4) {
     if (x >= DONE_BTN_X - 2) return ACT_CLOSE_MENU;
     int16_t t = (x < TAB_X0) ? 0 : (x - TAB_X0) / TAB_W;
     if (t >= TAB_COUNT) t = TAB_COUNT - 1;
@@ -1104,6 +1113,7 @@ inline uint32_t applyAction(Settings& s, UiState& ui, Action a, uint32_t now) {
   switch (a) {
     case ACT_OPEN_MENU:   ui.screen = SCR_SETTINGS; return FX_NONE;
     case ACT_OPEN_NET:    ui.screen = SCR_SETTINGS; ui.tab = TAB_NET; return FX_NONE;
+    case ACT_OPEN_SYS:    ui.screen = SCR_SETTINGS; ui.tab = TAB_SYS; return FX_NONE;
     case ACT_CLOSE_MENU:  ui.screen = SCR_MAIN; ui.resetArmedUntil = 0; return FX_NONE;
     case ACT_OPEN_FFT:    ui.screen = SCR_FFT; return FX_NONE;
     case ACT_CLOSE_FFT:   ui.screen = SCR_MAIN; return FX_NONE;

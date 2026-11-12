@@ -28,14 +28,14 @@ This directory documents the software architecture, signal‑processing pipeline
 Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs with large touch tiles:
 
 #### [SCOPE] Tab — Prescaling, Probes & Grid Style
-![Settings Menu - SCOPE Tab](../../images/screens/07_menu_scope.png)
+![Settings Menu - SCOPE Tab](../../images/screens/02_menu_scope_tab.png)
 * `CH1 Coupling` & `CH2 Coupling`: Direct DC (`0–6.6 V` on CH1, `0–13.2 V` on CH2) vs AC (`0.1 µF` capacitor).
 * `CH1 Attenuation` & `CH2 Attenuation`: **Probe A (CH1) default `2X` (`0–6.6 V`)** for high accuracy on sub-5.5V signals, and **Probe B (CH2) default `4X` (`0–13.2 V`)** for 12V power rails.
 * `Display Grid Style`: `10×6 Dot Matrix` (clean) vs `Solid Lines`.
 * `Math / Spectrum Overlay`: `256-pt Real-time FFT` spectrum display.
 
 #### [TRIG] Tab — Trigger Source, Slopes & Hysteresis
-![Settings Menu - TRIG Tab](../../images/screens/08_menu_trig.png)
+![Settings Menu - TRIG Tab](../../images/screens/03_tab_trig.png)
 * `Trigger Source`: `CH1 (Analog)`, `CH2 (Analog)`, or `D1 (Digital Logic)`.
 * `Trigger Slope`: `/ Rising Edge` (default) vs `\ Falling Edge`.
 * `Sweep Mode`: `AUTO (Continuous)`, `NORM (Valid Trigger)`, or `SNGL (Single Shot)`.
@@ -43,7 +43,7 @@ Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs wi
 * `Hardware Trigger Threshold Level`: Continuous slider & touch-drag indicator (`1.65 V` mid-scale).
 
 #### [I/O] Tab — Waveform Generator & Logic Analyzer
-![Settings Menu - I/O Tab](../../images/screens/09_menu_io.png)
+![Settings Menu - I/O Tab](../../images/screens/03_tab_io.png)
 * `Waveform Shape`: `Sine Wave`, `Square Wave`, or `PWM Pulse`.
 * `Calibration Frequency`: `1.000 kHz` calibration signal via `IO7` DAC / PWM.
 * `PWM Duty Cycle`: Variable `50.0%` duty cycle (adjustable `1–99%`).
@@ -52,7 +52,7 @@ Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs wi
 * `Logic Analyzer Input (D1)`: `GPIO 2` CMOS 3.3V logic capture channel.
 
 #### [WIFI] Tab — Network & Wi-Fi Statistics Dashboard
-![Settings Menu - WIFI Tab](../../images/screens/10_menu_wifi.png)
+![Settings Menu - WIFI Tab](../../images/screens/03_tab_wifi.png)
 * Real-time network telemetry:
   - **Connected IP**: `192.168.1.100` (Default target with automatic collision fallback).
   - **Allocation Mode**: `Static (.100 default)`, `Static Fallback (.101+)`, or `DHCP Leased`.
@@ -62,7 +62,7 @@ Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs wi
   - **`[RE-PROBE & RECONNECT]` Button**: One-tap touchscreen button to re-probe or re-associate.
 
 #### [SYS] Tab — Backlight, LiPo Battery & NVS Storage
-![Settings Menu - SYS Tab](../../images/screens/11_menu_sys.png)
+![Settings Menu - SYS Tab](../../images/screens/03_tab_sys.png)
 * `LCD Brightness`: Hardware PWM backlight intensity (`85%` on `IO22`).
 * `LiPo Battery Status`: Live voltage and SoC gauge (`4.12 V — 94%`, USB charging detection).
 * `ESP32-C6 RISC-V SoC Telemetry`: `160 MHz`, `384 KB SRAM`, internal core temperature (`37.4°C`).
@@ -72,7 +72,7 @@ Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs wi
 ---
 
 ### 1.4 Standalone FFT Frequency Spectrum & Histogram Display
-![Standalone FFT Frequency Spectrum Screen](../../images/screens/04_fft_auto_zoom.png)
+![Standalone FFT Frequency Spectrum Screen](../../images/screens/05_fft.png)
 
 * **Direct One-Tap Access**: Tap the **`[FFT]`** badge in the top bar of the main oscilloscope screen (or via Settings) to switch to the full-screen frequency spectrum analyzer. Tap **`[◀ SCOPE]`** anytime to return to time-domain waveforms.
 * **128-Bin Frequency Histogram**:
@@ -90,7 +90,7 @@ Accessed via the top-right **`[⚙ MENU]`** button. Includes 5 organized tabs wi
 ---
 
 ### 1.5 Mixed-Signal & Freeze Mode
-![Mixed-Signal Waveform Capture](../../images/screens/03_scope_mso_hold.png)
+![Mixed-Signal Waveform Capture](../../images/screens/14_run_hold.png)
 
 * Simultaneous dual-channel analog waveform capture and digital logic analyzer trace (`[D1]`).
 * Instant waveform freeze via `[HOLD]` button for post-capture analysis.

@@ -648,7 +648,14 @@ const char index_html[] PROGMEM = R"EOS(
         document.getElementById('netRssi').textContent = d.rssi + ' dBm (' + (d.bars || 4) + ' bars)';
       }
       if (d.batVolts !== undefined) {
-        const batStr = (d.batVolts < 2.5) ? '⚡ USB (5V)' : `🔋 ${d.batPct}% (${d.batVolts.toFixed(2)}V)`;
+        let batStr;
+        if (d.batVolts < 2.5) {
+          batStr = '⚡ USB (5V Power)';
+        } else if (d.batVolts >= 4.10) {
+          batStr = `⚡ USB (Full) 100% (${d.batVolts.toFixed(2)}V)`;
+        } else {
+          batStr = `🔋 ${d.batPct}% (${d.batVolts.toFixed(2)}V)`;
+        }
         document.getElementById('badgeBat').textContent = batStr;
       }
       if (d.ssid) document.getElementById('netSsid').textContent = d.ssid;
@@ -845,10 +852,15 @@ constexpr uint8_t AXS5106L_ADDR  = 0x63;
 constexpr int8_t PIN_SCOPE_CH1   = 6;   // ADC1_CH6 (Primary Probe A - DC/AC)
 constexpr int8_t PIN_SCOPE_CH2   = 5;   // ADC1_CH5 (Secondary Probe B - DC/AC)
 constexpr int8_t PIN_BAT_ADC     = 0;   // ADC1_CH0 (Onboard 3:1 Battery Sense)
+// This unit has no LiPo cell: with nothing attached the sense divider floats
+// at ~3.3 V, which reads as a phantom "empty cell". Set to 1 only if a real
+// battery is installed.
+#define BAT_CELL_INSTALLED 0
 constexpr int8_t PIN_CAL_OUT     = 7;   // Built-in PWM Test/Calibration Output
 
 // --- State Variables ---
 static dso::Settings      g_settings;
+static dso::Settings      g_savedSettings;
 static dso::UiState       g_ui;
 static dso::NetworkStats  g_netStats;
 static dso::Metrics       g_metricsCh1;
@@ -1064,6 +1076,40 @@ static void setupADC() {
   pinMode(PIN_SCOPE_CH2, INPUT);
 }
 
+static void updateBatteryStatus() {
+#if BAT_CELL_INSTALLED
+  uint16_t rawBat = analogRead(PIN_BAT_ADC);
+  float vBat = (rawBat * 3.3f / 4095.0f) * 3.0f;
+  if (g_batVolts < 0.1f) g_batVolts = vBat;
+  else g_batVolts = 0.85f * g_batVolts + 0.15f * vBat;
+
+  if (g_batVolts >= dso::BATTERY_PRESENT_MIN_V) {
+    g_batPct = dso::batteryPercent(g_batVolts);
+  } else {
+    g_batPct = 0; // USB powered (no cell attached)
+  }
+#else
+  // No cell installed: the ADC reads a phantom ~3.3 V through the floating
+  // divider, so force USB-powered mode (full cyan "charging" icon) everywhere.
+  g_batVolts = 0.0f;
+  g_batPct = 0;
+#endif
+
+  // DEBUG: report battery state so we can verify USB / cell detection.
+  static uint32_t s_lastBatDbg = 0;
+  if (millis() - s_lastBatDbg >= 2000) {
+    s_lastBatDbg = millis();
+#if BAT_CELL_INSTALLED
+    Serial.printf("[BAT] raw=%u  vBat=%.2fV  pct=%u%%  mode=%s\n",
+                  (unsigned)rawBat, (double)g_batVolts, (unsigned)g_batPct,
+                  (g_batVolts >= dso::BATTERY_PRESENT_MIN_V) ? "CELL" : "USB");
+#else
+    Serial.printf("[BAT] no cell compiled in (BAT_CELL_INSTALLED=0)  mode=USB  pct=%u%%\n",
+                  (unsigned)g_batPct);
+#endif
+  }
+}
+
 // =============================================================================
 // 5. NVS FLASH SETTINGS PERSISTENCE
 // =============================================================================
@@ -1077,14 +1123,17 @@ static void loadSettings() {
     }
   }
   prefs.end();
+  g_savedSettings = g_settings;
 }
 
 static void saveSettings() {
+  if (dso::settingsEqual(g_savedSettings, g_settings)) return;
   prefs.begin("pocketdso", false);
   uint8_t blob[dso::SETTINGS_BLOB_SIZE];
   dso::serializeSettings(g_settings, blob);
   prefs.putBytes("cfg", blob, sizeof(blob));
   prefs.end();
+  g_savedSettings = g_settings;
   Serial.println("[NVS] Settings saved to flash.");
 }
 
@@ -1094,6 +1143,9 @@ static void saveSettings() {
 
 #if ENABLE_WEB_UI
 static bool g_webServerStarted = false;
+// Debounced NVS commit timestamp (0 = none): /api/set & web UI changes are saved
+// 1.5 s after the last change, so nothing is lost on reboot (F3 fix).
+static uint32_t g_apiSavePendingMs = 0;
 
 static void startWebServerOnce();
 
@@ -1427,6 +1479,45 @@ static void drawTile(int16_t x, int16_t y, int16_t w, int16_t h,
   drawTextCentered(cx, valY, value, big ? 2 : 1, valueCol);
 }
 
+static void drawBatteryIcon(int16_t zoneX, int16_t zoneW, float vBat, uint8_t pct,
+                            int16_t baseY = dso::TOP_BTN_Y + dso::TOP_BTN_H - 4) {
+  const bool hasCell = (vBat >= dso::BATTERY_PRESENT_MIN_V);
+  const int16_t bw = 17, bh = 10;
+  const int16_t x0 = zoneX + (zoneW - (bw + 2)) / 2;
+  const int16_t y0 = baseY - bh + 1;
+
+  if (!hasCell) {
+    // USB Powered (no cell): Show a solid cyan battery = 100% charged, with a
+    // lightning bolt "punched out" of the fill to indicate charging from USB.
+    gfx->fillRoundRect(x0, y0, bw, bh, 2, pal::CH2_TRACE);
+    gfx->drawRoundRect(x0, y0, bw, bh, 2, pal::CH2_TRACE);
+    gfx->fillRect(x0 + bw, y0 + 3, 2, bh - 6, pal::CH2_TRACE); // terminal nub
+
+    // Dark lightning bolt on the full fill (same color as the top bar bg)
+    gfx->fillTriangle(x0 + 10, y0 + 1, x0 + 5, y0 + 5, x0 + 9, y0 + 5, pal::BG_PANEL);
+    gfx->fillTriangle(x0 + 8, y0 + 4, x0 + 11, y0 + 4, x0 + 6, y0 + 8, pal::BG_PANEL);
+  } else {
+    // Battery Present: Color-coded outline and fill bars
+    const uint16_t frameCol = (pct > 15) ? pal::TEXT_MUTED : pal::BADGE_HOLD;
+    const uint16_t fillCol  = (pct > 40) ? pal::BADGE_RUN : ((pct > 15) ? pal::BADGE_WARN : pal::BADGE_HOLD);
+
+    gfx->drawRoundRect(x0, y0, bw, bh, 2, frameCol);
+    gfx->fillRect(x0 + bw, y0 + 3, 2, bh - 6, frameCol);
+
+    int16_t fillW = ((bw - 4) * pct) / 100;
+    if (fillW > 0) {
+      if (fillW > bw - 4) fillW = bw - 4;
+      gfx->fillRect(x0 + 2, y0 + 2, fillW, bh - 4, fillCol);
+    }
+
+    // If high voltage (>=4.10V), show white lightning bolt indicating USB power / charging
+    if (vBat >= 4.10f) {
+      gfx->fillTriangle(x0 + 10, y0 + 1, x0 + 5, y0 + 5, x0 + 9, y0 + 5, pal::TEXT_WHITE);
+      gfx->fillTriangle(x0 + 8, y0 + 4, x0 + 11, y0 + 4, x0 + 6, y0 + 8, pal::TEXT_WHITE);
+    }
+  }
+}
+
 static void drawWifiIcon(int16_t zoneX, int16_t zoneW, uint8_t bars, bool connected,
                          int16_t baseY = dso::TOP_BTN_Y + dso::TOP_BTN_H - 3) {
   const int16_t iconW = 18; // 4 bars x 3 px + 3 gaps x 2 px
@@ -1471,10 +1562,15 @@ static void renderScopeScreen() {
   drawTopBarBackground();
 
   const bool isAuto = (g_settings.autoTimebase || g_settings.autoVolts);
+  // Distinguish fully-auto from partially-auto (F5): both -> AUTO,
+  // only timebase -> A_T, only volts -> A_V, neither -> MAN.
+  const char *autoTag = (g_settings.autoTimebase && g_settings.autoVolts) ? "AUTO"
+                      : g_settings.autoTimebase ? "A_T"
+                      : g_settings.autoVolts    ? "A_V" : "MAN";
   drawButton(dso::AUTO_BADGE_X, dso::TOP_BTN_Y, dso::AUTO_BADGE_W, dso::TOP_BTN_H,
              isAuto ? pal::BADGE_AUTO : pal::BTN_DARK,
              isAuto ? pal::BORDER_ACTIVE : pal::BTN_BORDER,
-             isAuto ? "AUTO" : "MAN");
+             autoTag);
 
   int16_t textX = dso::AUTO_BADGE_X + dso::AUTO_BADGE_W + 6;
   if (g_settings.selfTest) {
@@ -1484,12 +1580,17 @@ static void renderScopeScreen() {
 
   char buf[16];
   const int16_t textY = dso::TOP_BTN_Y + 6;
-  dso::fmtVolts(buf, sizeof(buf), g_metricsCh1.dc);
+  // AC coupling: display the AC RMS (the DC component is intentionally blocked,
+  // so showing the raw mean would be misleading) — F6 fix.
+  dso::fmtVolts(buf, sizeof(buf), g_settings.acCoupled ? g_metricsCh1.rms : g_metricsCh1.dc);
   drawText(textX, textY, buf, 1, pal::CH1_TRACE);
   textX += textWidth(buf, 1) + 6;
   if (g_metricsCh1.freq >= 1.0f) {
     dso::fmtFreq(buf, sizeof(buf), g_metricsCh1.freq);
-    drawText(textX, textY, buf, 1, pal::DIG_D1);
+    // Warn color when the measured frequency approaches Nyquist (fs/2):
+    // at >0.4x fs the reading may be aliased/undersampled — F1 mitigation.
+    const bool nearNyquist = (g_metricsCh1.freq >= 0.4f * g_actualSampleRateHz);
+    drawText(textX, textY, buf, 1, nearNyquist ? pal::BADGE_WARN : pal::DIG_D1);
   } else {
     drawText(textX, textY, "pp", 1, pal::TEXT_MUTED);
     dso::fmtVolts(buf, sizeof(buf), g_metricsCh1.vpp);
@@ -1498,6 +1599,7 @@ static void renderScopeScreen() {
 
   drawButton(dso::FFT_BTN_X, dso::TOP_BTN_Y, dso::FFT_BTN_W, dso::TOP_BTN_H,
              pal::BTN_DARK, pal::CH2_TRACE, "FFT", pal::CH2_TRACE);
+  drawBatteryIcon(dso::BAT_ZONE_X, dso::BAT_ZONE_W, g_batVolts, g_batPct);
   drawWifiIcon(dso::WIFI_ZONE_X, dso::WIFI_ZONE_W, g_netStats.bars, g_netStats.connected);
   drawMenuButton();
 
@@ -1618,9 +1720,11 @@ static void drawPowerStatsPanel(int16_t x, int16_t y, int16_t w, int16_t h) {
     const int16_t fw = ((gw - 4) * g_batPct) / 100;
     if (fw > 0) gfx->fillRect(gx + 2, gy + 2, fw, gh - 4, lvlCol);
   } else {
-    // Lightning bolt = external (USB) power
-    gfx->fillTriangle(gx + 20, gy + 2, gx + 12, gy + 10, gx + 18, gy + 10, pal::CH2_TRACE);
-    gfx->fillTriangle(gx + 16, gy + 8, gx + 22, gy + 8, gx + 14, gy + 16, pal::CH2_TRACE);
+    // Full cyan fill = 100% (USB powered, no cell to discharge)
+    gfx->fillRect(gx + 2, gy + 2, gw - 4, gh - 4, lvlCol);
+    // Lightning bolt punched out of the fill = charging from USB
+    gfx->fillTriangle(gx + 20, gy + 2, gx + 12, gy + 10, gx + 18, gy + 10, pal::BG_PANEL);
+    gfx->fillTriangle(gx + 16, gy + 8, gx + 22, gy + 8, gx + 14, gy + 16, pal::BG_PANEL);
   }
 
   char buf[24];
@@ -1858,6 +1962,7 @@ static void renderFftScreen() {
   dso::fmtFreq(buf, sizeof(buf), (g_fftPeakCount > 0) ? g_fftPeakFreq : 0.0f);
   drawText(pkX + 28, dso::TOP_BTN_Y + 2, buf, 2, pal::CH1_TRACE);
 
+  drawBatteryIcon(dso::BAT_ZONE_X, dso::BAT_ZONE_W, g_batVolts, g_batPct);
   drawWifiIcon(dso::WIFI_ZONE_X, dso::WIFI_ZONE_W, g_netStats.bars, g_netStats.connected);
   drawMenuButton();
 
@@ -2039,6 +2144,95 @@ static void renderFftScreen() {
 // 9. TOUCH INPUT DISPATCHER
 // =============================================================================
 
+static dso::Settings g_lastDrawn;
+static uint8_t       g_lastScreen   = 0xFF;
+static uint8_t       g_lastTab      = 0xFF;
+static bool          g_lastArmed    = false;
+static uint32_t      g_lastRenderMs = 0;
+static uint32_t      g_lastFrameMs  = 0;
+
+// Applies a tap at logical landscape screen coordinates (tx, ty).
+// Shared by the physical touch poller and the /api/tap HTTP endpoint,
+// so a remote tap behaves exactly like a finger tap on the glass.
+static dso::Action applyTapAt(uint16_t tx, uint16_t ty) {
+  uint32_t now = millis();
+
+  // Press inside the waveform grid adjusts the trigger level
+  if (g_ui.screen == dso::SCR_MAIN && ty >= dso::CHART_Y && ty < (dso::CHART_Y + dso::CHART_H)) {
+    dso::dragTrigger(g_settings, ty, g_metricsCh1.dc);
+    return dso::ACT_CHART_TOUCH;
+  }
+
+  dso::Action act = dso::ACT_NONE;
+  if (g_ui.screen == dso::SCR_MAIN) {
+    act = dso::hitTestMain(tx, ty);
+  } else if (g_ui.screen == dso::SCR_FFT) {
+    act = dso::hitTestFft(tx, ty);
+  } else {
+    act = dso::hitTestSettings(g_ui.tab, tx, ty);
+  }
+
+  uint32_t fx = dso::applyAction(g_settings, g_ui, act, now);
+
+  if (fx & dso::FX_CAL) updateCalibrationGenerator();
+  if (fx & dso::FX_BACKLIGHT) updateBacklight();
+#if ENABLE_WEB_UI
+  if (fx & dso::FX_RECONNECT) connectWifi();
+#endif
+  if (fx & dso::FX_FACTORY_RESET) {
+    g_settings = dso::Settings();
+    saveSettings();
+    updateCalibrationGenerator();
+    updateBacklight();
+  }
+
+  // Instantaneous screen switching & rendering on touch for zero-latency UI
+  if (act == dso::ACT_CLOSE_MENU) {
+    renderScopeScreen();
+    g_lastDrawn    = g_settings;
+    g_lastScreen   = g_ui.screen;
+    g_lastTab      = g_ui.tab;
+    g_lastArmed    = (g_ui.resetArmedUntil > millis());
+    g_lastRenderMs = millis();
+    g_lastFrameMs  = millis();
+    // Only commit to flash if settings were actually modified
+    if (!dso::settingsEqual(g_savedSettings, g_settings)) {
+      saveSettings();
+    }
+  } else if (act == dso::ACT_OPEN_MENU || act == dso::ACT_OPEN_NET || act == dso::ACT_OPEN_SYS) {
+    renderSettingsModal();
+    g_lastDrawn    = g_settings;
+    g_lastScreen   = g_ui.screen;
+    g_lastTab      = g_ui.tab;
+    g_lastArmed    = (g_ui.resetArmedUntil > millis());
+    g_lastRenderMs = millis();
+  } else if (act == dso::ACT_OPEN_FFT) {
+    renderFftScreen();
+    g_lastDrawn    = g_settings;
+    g_lastScreen   = g_ui.screen;
+    g_lastTab      = g_ui.tab;
+    g_lastArmed    = (g_ui.resetArmedUntil > millis());
+    g_lastRenderMs = millis();
+  } else if (act == dso::ACT_CLOSE_FFT) {
+    renderScopeScreen();
+    g_lastDrawn    = g_settings;
+    g_lastScreen   = g_ui.screen;
+    g_lastTab      = g_ui.tab;
+    g_lastArmed    = (g_ui.resetArmedUntil > millis());
+    g_lastRenderMs = millis();
+    g_lastFrameMs  = millis();
+  } else if (act >= dso::ACT_TAB_SCOPE && act <= dso::ACT_TAB_SYS) {
+    renderSettingsModal();
+    g_lastDrawn    = g_settings;
+    g_lastScreen   = g_ui.screen;
+    g_lastTab      = g_ui.tab;
+    g_lastArmed    = (g_ui.resetArmedUntil > millis());
+    g_lastRenderMs = millis();
+  }
+
+  return act;
+}
+
 static void handleTouchInput() {
   static bool     wasPressed   = false;
   static bool     touchInChart = false;
@@ -2067,33 +2261,7 @@ static void handleTouchInput() {
   wasPressed = true;
   lastTapMs  = now;
 
-  dso::Action act = dso::ACT_NONE;
-  if (g_ui.screen == dso::SCR_MAIN) {
-    act = dso::hitTestMain(tx, ty);
-  } else if (g_ui.screen == dso::SCR_FFT) {
-    act = dso::hitTestFft(tx, ty);
-  } else {
-    act = dso::hitTestSettings(g_ui.tab, tx, ty);
-  }
-
-  uint32_t fx = dso::applyAction(g_settings, g_ui, act, now);
-
-  if (fx & dso::FX_CAL) updateCalibrationGenerator();
-  if (fx & dso::FX_BACKLIGHT) updateBacklight();
-#if ENABLE_WEB_UI
-  if (fx & dso::FX_RECONNECT) connectWifi();
-#endif
-  if (fx & dso::FX_FACTORY_RESET) {
-    g_settings = dso::Settings();
-    saveSettings();
-    updateCalibrationGenerator();
-    updateBacklight();
-  }
-
-  // Save settings when user exits menu
-  if (act == dso::ACT_CLOSE_MENU) {
-    saveSettings();
-  }
+  applyTapAt(tx, ty);
 }
 
 // =============================================================================
@@ -2213,8 +2381,79 @@ static void startWebServerOnce() {
     j.fmt(",\"rssi\":%d,\"bars\":%u,", g_netStats.rssi, g_netStats.bars);
     j.raw("\"gw\":");   j.str(g_netStats.gw);
     j.raw(",\"mac\":"); j.str(g_netStats.mac);
-    j.fmt(",\"clients\":1,\"httpReqs\":%lu}", (unsigned long)g_netStats.httpReqs);
+    j.fmt(",\"clients\":1,\"httpReqs\":%lu", (unsigned long)g_netStats.httpReqs);
+    // CH2 live readouts (0 when CH2 is OFF) so the web UI / tests get real values
+    if (g_settings.ch2Mode != dso::CH2_OFF) {
+      j.fmt(",\"ch2dc\":%.3f,\"ch2ac\":%.3f,\"ch2vpp\":%.3f,\"ch2freq\":%.1f",
+            g_metricsCh2.dc, g_metricsCh2.rms, g_metricsCh2.vpp, g_metricsCh2.freq);
+    } else {
+      j.raw(",\"ch2dc\":0,\"ch2ac\":0,\"ch2vpp\":0,\"ch2freq\":0");
+    }
+    j.ch('}');
     j.send();
+  });
+
+  // Screenshot: streams the raw indexed framebuffer + RGB565 palette.
+  // Format (all little-endian): "DSOS" magic, u16 fbW, u16 fbH, u16 rotation,
+  // u16 paletteCount, paletteCount * u16 RGB565, fbW*fbB index bytes.
+  // Decoded by screenshot.py on the PC.
+  server.on("/api/screenshot", HTTP_GET, [](){
+    g_netStats.httpReqs++;
+    server.sendHeader("Connection", "close");
+    server.sendHeader("Cache-Control", "no-store");
+
+    const int16_t fbW = 172, fbH = 320; // physical portrait framebuffer
+    const uint8_t rot = 1;              // canvas rotation (UI is landscape)
+    uint8_t  *fb  = gfx->getFramebuffer();
+    uint16_t *pal = gfx->getColorIndex();
+
+    // Effective palette size = highest index used + 1
+    const int32_t fbLen = (int32_t)fbW * fbH;
+    uint16_t palCount = 1;
+    for (int32_t i = 0; i < fbLen; ++i) {
+      if (fb[i] >= palCount) palCount = fb[i] + 1;
+    }
+
+    const size_t total = 12 + (size_t)palCount * 2 + (size_t)fbLen;
+    server.setContentLength(total);
+    server.send(200, "application/octet-stream", "");
+
+    uint8_t hdr[12] = { 'D', 'S', 'O', 'S' };
+    hdr[4]  = (uint8_t)(fbW & 0xFF);      hdr[5]  = (uint8_t)(fbW >> 8);
+    hdr[6]  = (uint8_t)(fbH & 0xFF);      hdr[7]  = (uint8_t)(fbH >> 8);
+    hdr[8]  = rot;                        hdr[9]  = 0;
+    hdr[10] = (uint8_t)(palCount & 0xFF); hdr[11] = (uint8_t)(palCount >> 8);
+    server.sendContent((const char *)hdr, sizeof(hdr));
+
+    // ESP32 is little-endian, so u16 RGB565 palette entries stream directly
+    server.sendContent((const char *)pal, (size_t)palCount * 2);
+
+    for (int32_t i = 0; i < fbLen; i += 2048) {
+      int32_t chunk = fbLen - i;
+      if (chunk > 2048) chunk = 2048;
+      server.sendContent((const char *)(fb + i), (size_t)chunk);
+    }
+  });
+
+  // Remote tap: emulate a touch at (x, y) in landscape screen coordinates.
+  // Example: GET /api/tap?x=297&y=12  -> taps the "DONE" button.
+  // Responds with the resulting action id + new screen/tab.
+  server.on("/api/tap", HTTP_GET, [](){
+    g_netStats.httpReqs++;
+    server.sendHeader("Connection", "close");
+    int x = server.arg("x").toInt();
+    int y = server.arg("y").toInt();
+    if (x < 0 || y < 0 || x >= dso::LCD_W || y >= dso::LCD_H) {
+      server.send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"x must be 0..319, y must be 0..171\"}");
+      return;
+    }
+    dso::Action act = applyTapAt((uint16_t)x, (uint16_t)y);
+    char buf[96];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"x\":%d,\"y\":%d,\"act\":%u,\"screen\":%u,\"tab\":%u}",
+             x, y, (unsigned)act, g_ui.screen, g_ui.tab);
+    server.send(200, "application/json", buf);
   });
 
   server.on("/api/waveform", HTTP_GET, [](){
@@ -2319,8 +2558,55 @@ static void startWebServerOnce() {
     }
     if (fx & dso::FX_CAL) updateCalibrationGenerator();
     if (fx & dso::FX_BACKLIGHT) updateBacklight();
+    g_apiSavePendingMs = millis() + 1500; // debounced NVS commit
     server.send(200, "text/plain", "OK");
     if (fx & dso::FX_RECONNECT) connectWifi();
+  });
+
+  // Full configuration read-back: every Settings field + live measured Fs.
+  // Gives tests / web UI a deterministic snapshot of the instrument state.
+  server.on("/api/state", HTTP_GET, [](){
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Connection", "close");
+    g_netStats.httpReqs++;
+    char buf[640];
+    snprintf(buf, sizeof(buf),
+      "{\"fw\":\"" DSO_FW_VERSION "\","
+      "\"trigVolts\":%.3f,\"timeBaseIdx\":%u,\"vDivIdx\":%u,\"sampleRateIdx\":%u,"
+      "\"probeIdx\":%u,\"probeBIdx\":%u,\"calFreqIdx\":%u,\"ch2Mode\":%u,"
+      "\"trigMode\":%u,\"hystIdx\":%u,\"brightnessIdx\":%u,"
+      "\"fftSpanIdx\":%u,\"fftLogScale\":%d,\"fftZoomIdx\":%u,"
+      "\"autoTimebase\":%d,\"autoVolts\":%d,\"acCoupled\":%d,\"selfTest\":%d,"
+      "\"userSetTrig\":%d,\"actualFs\":%.0f,\"captureSamples\":%u}",
+      (double)g_settings.trigVolts,
+      g_settings.timeBaseIdx, g_settings.vDivIdx, g_settings.sampleRateIdx,
+      g_settings.probeIdx, g_settings.probeBIdx, g_settings.calFreqIdx, g_settings.ch2Mode,
+      g_settings.trigMode, g_settings.hystIdx, g_settings.brightnessIdx,
+      g_settings.fftSpanIdx, g_settings.fftLogScale ? 1 : 0, g_settings.fftZoomIdx,
+      g_settings.autoTimebase ? 1 : 0, g_settings.autoVolts ? 1 : 0,
+      g_settings.acCoupled ? 1 : 0, g_settings.selfTest ? 1 : 0,
+      g_settings.userSetTrig ? 1 : 0, (double)g_actualSampleRateHz,
+      (unsigned)dso::CAPTURE_SAMPLES);
+    server.send(200, "application/json", buf);
+  });
+
+  // Commit current configuration to NVS flash immediately (normally saved
+  // automatically 1.5 s after the last /api/set or a DONE press).
+  server.on("/api/save", HTTP_GET, [](){
+    server.sendHeader("Connection", "close");
+    saveSettings();
+    g_apiSavePendingMs = 0;
+    server.send(200, "text/plain", "OK saved");
+  });
+
+  // Controlled restart (for persistence tests). ?save=1 commits settings first.
+  server.on("/api/reboot", HTTP_GET, [](){
+    server.sendHeader("Connection", "close");
+    if (server.arg("save") == "1") saveSettings();
+    server.send(200, "text/plain", "OK rebooting");
+    Serial.println("[API] Reboot requested");
+    delay(200);
+    ESP.restart();
   });
 
   server.onNotFound([](){
@@ -2406,12 +2692,16 @@ void setup() {
   // 4. Initialize ADC & Cal Generator & Backlight
   setupADC();
   loadSettings();
+  updateBatteryStatus();
   updateCalibrationGenerator();
   updateBacklight();
 
   // 5. Capture and render the first oscilloscope frame immediately
   captureWaveforms();
   g_metricsCh1 = dso::analyze(g_ch1Volts, dso::CAPTURE_SAMPLES, g_actualSampleRateHz, dso::HYST_VOLTS[g_settings.hystIdx]);
+  if (g_settings.ch2Mode != dso::CH2_OFF) {
+    g_metricsCh2 = dso::analyze(g_ch2Volts, dso::CAPTURE_SAMPLES, g_actualSampleRateHz, dso::HYST_VOLTS[g_settings.hystIdx]);
+  }
   renderScopeScreen();
 
   Serial.println("PocketDSO v" DSO_FW_VERSION " (262K Color IPS) Ready!");
@@ -2433,6 +2723,11 @@ void loop() {
 #if ENABLE_WEB_UI
   if (g_webServerStarted) {
     server.handleClient();
+    // Debounced NVS commit for /api-set & web-UI changes
+    if (g_apiSavePendingMs != 0 && (int32_t)(millis() - g_apiSavePendingMs) >= 0) {
+      g_apiSavePendingMs = 0;
+      saveSettings();
+    }
   }
 #endif
 
@@ -2450,16 +2745,7 @@ void loop() {
   static uint32_t lastBatMs = 0;
   if (now - lastBatMs >= 2000) {
     lastBatMs = now;
-    uint16_t rawBat = analogRead(PIN_BAT_ADC);
-    float vBat = (rawBat * 3.3f / 4095.0f) * 3.0f;
-    if (g_batVolts < 0.1f) g_batVolts = vBat;
-    else g_batVolts = 0.85f * g_batVolts + 0.15f * vBat;
-
-    if (g_batVolts >= dso::BATTERY_PRESENT_MIN_V) {
-      g_batPct = dso::batteryPercent(g_batVolts);
-    } else {
-      g_batPct = 0; // USB powered
-    }
+    updateBatteryStatus();
 
 #if ENABLE_WEB_UI
     if (g_netStats.connected && WiFi.status() == WL_CONNECTED) {
@@ -2471,9 +2757,8 @@ void loop() {
   }
 
   // 3. Acquire ADC burst and render display once per 40 ms frame (~25 FPS)
-  static uint32_t lastFrameMs = 0;
-  if (now - lastFrameMs >= 40) {
-    lastFrameMs = now;
+  if (now - g_lastFrameMs >= 40) {
+    g_lastFrameMs = now;
     bool captured = false;
 
     if (g_settings.running && g_ui.screen != dso::SCR_SETTINGS) {
@@ -2483,7 +2768,8 @@ void loop() {
       if (g_settings.ch2Mode != dso::CH2_OFF) {
         g_metricsCh2 = dso::analyze(g_ch2Volts, dso::CAPTURE_SAMPLES, g_actualSampleRateHz, dso::HYST_VOLTS[g_settings.hystIdx]);
       }
-      dso::autoScale(g_settings, g_metricsCh1);
+      dso::autoScale(g_settings, g_metricsCh1,
+                     (g_settings.ch2Mode != dso::CH2_OFF) ? &g_metricsCh2 : nullptr);
 
       // Single-shot freeze
       if (g_settings.trigMode == dso::TRIG_SINGLE && g_trace.triggered) {
@@ -2494,14 +2780,10 @@ void loop() {
     // Skip redundant redraws (a full-frame SPI flush takes ~44 ms at 20 MHz):
     // redraw on new data or any visible state change, else refresh every 500 ms
     // so battery / RSSI / web-side changes still appear.
-    static dso::Settings lastDrawn;
-    static uint8_t  lastScreen = 0xFF, lastTab = 0xFF;
-    static bool     lastArmed = false;
-    static uint32_t lastRenderMs = 0;
     const bool armed = (g_ui.resetArmedUntil > now);
-    const bool needRender = captured || g_ui.screen != lastScreen || g_ui.tab != lastTab ||
-                            armed != lastArmed || !dso::settingsEqual(lastDrawn, g_settings) ||
-                            (now - lastRenderMs >= 500);
+    const bool needRender = captured || g_ui.screen != g_lastScreen || g_ui.tab != g_lastTab ||
+                            armed != g_lastArmed || !dso::settingsEqual(g_lastDrawn, g_settings) ||
+                            (now - g_lastRenderMs >= 500);
     if (needRender) {
       if (g_ui.screen == dso::SCR_SETTINGS) {
         renderSettingsModal();
@@ -2510,11 +2792,11 @@ void loop() {
       } else {
         renderScopeScreen();
       }
-      lastDrawn    = g_settings;
-      lastScreen   = g_ui.screen;
-      lastTab      = g_ui.tab;
-      lastArmed    = armed;
-      lastRenderMs = now;
+      g_lastDrawn    = g_settings;
+      g_lastScreen   = g_ui.screen;
+      g_lastTab      = g_ui.tab;
+      g_lastArmed    = armed;
+      g_lastRenderMs = now;
     }
 #if ENABLE_WEB_UI
     if (g_webServerStarted) {

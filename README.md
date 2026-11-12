@@ -133,41 +133,67 @@ To build the dual-channel probes safely and accurately, refer to the electronics
 
 Operating an oscilloscope on a **1.47‑inch screen** (`320 × 172 px` active area, $\approx 35 \times 19\text{ mm}$) requires ergonomic layout design:
 1. **Top Telemetry Bar (`320 × 24 px`)**:
-   - `[AUTO]` badge: Toggles automatic horizontal and vertical signal prescaling.
+   - `[AUTO]` / `[A_T]` / `[A_V]` / `[MAN]` badge: Displays and toggles automatic horizontal and vertical signal prescaling.
    - Numerical Readouts: Average DC voltage ($V_{\text{DC}}$), True AC RMS ripple ($V_{\text{RMS,AC}} = \sqrt{\frac{1}{N}\sum(v_i - V_{\text{DC}})^2}$), Peak-to-Peak ($V_{\text{pp}}$), and Fundamental Frequency (`Hz`/`kHz`).
-   - `[FFT]` badge: One-tap toggle to jump to the standalone FFT frequency spectrum analyzer.
+   - `[FFT]` button: One-tap toggle to jump to the standalone 1024-point FFT frequency spectrum analyzer.
+   - **Battery & USB Power Meter**: Automatic detection of USB power (`⚡ USB` when running without a battery, or full battery with a lightning bolt when charging/full on USB) vs LiPo battery gauge ($0 \dots 100\%$ with green/yellow/red color thresholds). Tapping the icon immediately opens the `[SYS]` power diagnostics tab.
    - Wi-Fi signal indicator: 4-bar RSSI gauge (tapping opens network diagnostics).
-   - Battery meter: Percentage ($0 \dots 100\%$) and live voltage or `USB` indicator.
-   - `[⚙ MENU]` button: Opens the full-screen 5-tab settings modal.
+   - `[⚙ MENU]` button: Opens the full-screen 5-tab settings modal with instant touch response.
 2. **Waveform Reticle & Touch Trigger (`320 × 110 px`)**:
    - Standard $10 \times 6$ grid divisions with sub-division tick marks along the center axes.
    - Direct Touch-Drag: Slide your thumb vertically on the grid to position the magenta trigger threshold line ($T$).
 3. **Bottom Control Bar (`320 × 38 px`)**:
    - Four oversized rounded buttons ($74 \times 34\text{ px}$): `AUTO SCALE`, `T / div`, `V / div`, and `> RUN` / `|| HOLD`.
+4. **Zero-Latency Navigation & Instant "DONE" Return**:
+   - Expanded top-right touch zone ($x \ge 240, y \le 32\text{ px}$) ensures every tap on `DONE` reliably triggers `ACT_CLOSE_MENU`.
+   - Direct frame switching immediately renders the scope view ($\approx 35\text{ ms}$ response) without blocking on ADC sampling bursts or unnecessary NVS flash writes.
 
 ---
 
 ## 5. Software Screen Reference Gallery
 
-| Main Scope View (`01_scope_main.png`) | Mixed-Signal MSO Mode (`03_scope_mso_hold.png`) |
-|:---:|:---:|
-| ![Main Scope](images/screens/01_scope_main.png) | ![MSO Mode](images/screens/03_scope_mso_hold.png) |
-| *Active scope trace with neon yellow glow and telemetry* | *Mixed-signal view with Channel 2 Digital Logic Analyzer `[D1]`* |
+All screenshots below are lossless pixel-accurate digital captures taken directly from the physical **Waveshare ESP32-C6-Touch-LCD-1.47-M** device over Wi-Fi via `screenshot.js`:
 
-| FFT Auto-Zoom (`04_fft_auto_zoom.png`) | FFT Full Span (`05_fft_full.png`) |
-|:---:|:---:|
-| ![FFT Auto Zoom](images/screens/04_fft_auto_zoom.png) | ![FFT Full](images/screens/05_fft_full.png) |
-| *128-bin FFT with Auto Zoom centered on dominant peak* | *Full Nyquist span ($0 \dots 50\text{ kHz}$) frequency spectrum* |
+### 5.1 Main Oscilloscope Views
 
-| Menu: Scope Settings (`07_menu_scope.png`) | Menu: Trigger Settings (`08_menu_trig.png`) |
+| Live Scope Trace (`01_scope_main.png`) | Partial Auto Timebase Mode (`12_badge_A_T.png`) |
 |:---:|:---:|
-| ![Menu Scope](images/screens/07_menu_scope.png) | ![Menu Trig](images/screens/08_menu_trig.png) |
-| *Timebase, volts/div, sample rate, and probe dividers* | *Trigger slope (Rising/Falling/Single), threshold & hysteresis* |
+| ![Live Scope Trace](images/screens/01_scope_main.png) | ![Partial Auto A_T](images/screens/12_badge_A_T.png) |
+| *Active 1 kHz calibration wave with DC/RMS telemetry, FFT button, battery, Wi-Fi, and MENU* | *Independent Auto-Timebase badge (`A_T`) with manual voltage scale locked* |
 
-| Menu: Wi-Fi Diagnostics (`10_menu_wifi.png`) | Menu: System & MCU (`11_menu_sys.png`) |
+| Bottom Master AUTO (`13_bottom_auto.png`) | Waveform Freeze / HOLD (`14_run_hold.png`) |
 |:---:|:---:|
-| ![Menu WiFi](images/screens/10_menu_wifi.png) | ![Menu Sys](images/screens/11_menu_sys.png) |
-| *Connected IP, SSID, RSSI dBm, Subnet, MAC & WebSocket status* | *Battery level, Uptime, Brightness, Firmware & Factory Reset* |
+| ![Bottom Auto](images/screens/13_bottom_auto.png) | ![Run Hold](images/screens/14_run_hold.png) |
+| *Bottom tactile button triggering automated timebase & voltage scaling* | *Red `[HOLD]` state freezing acquisition buffer for detailed inspection* |
+
+### 5.2 Settings Modal Tabs
+
+| Tab 1: Scope Settings (`02_menu_scope_tab.png`) | Tab 2: Trigger Settings (`03_tab_trig.png`) |
+|:---:|:---:|
+| ![Menu Scope](images/screens/02_menu_scope_tab.png) | ![Menu Trig](images/screens/03_tab_trig.png) |
+| *Auto T/V toggles, Timebase, Volts/div, Sample Rate, and Probe A/B scaling* | *Trigger slope (Rising/Falling), AC Coupling, Level, Hysteresis, and Single Arm* |
+
+| Tab 3: I/O & Cal Generator (`03_tab_io.png`) | Tab 4: Wi-Fi Diagnostics (`03_tab_wifi.png`) |
+|:---:|:---:|
+| ![Menu I/O](images/screens/03_tab_io.png) | ![Menu WiFi](images/screens/03_tab_wifi.png) |
+| *CH2 Mode (Analog/Digital/OFF), Signal Source (Probes vs 0-Wire Loopback), and Cal Gen* | *Connected IP, SSID, RSSI dBm signal strength, Gateway, MAC & Reconnect button* |
+
+| Tab 5: Power & System (`03_tab_sys.png`) | Finalized Baseline Screen (`15_final.png`) |
+|:---:|:---:|
+| ![Menu Sys](images/screens/03_tab_sys.png) | ![Final Screen](images/screens/15_final.png) |
+| *Live battery gauge, voltage, uptime counter, LCD backlight brightness, and factory reset* | *Return to main scope view with active telemetry and zero-latency transition* |
+
+### 5.3 FFT Frequency Spectrum Analyzer
+
+| Dedicated FFT Spectrum (`05_fft.png`) | FFT Auto-Zoom Mode (`06_fft_zoom.png`) |
+|:---:|:---:|
+| ![FFT Spectrum](images/screens/05_fft.png) | ![FFT Zoom](images/screens/06_fft_zoom.png) |
+| *1024-point FFT with automated fundamental peak frequency lock (`PEAK 1.00kHz`)* | *Auto-Zoom centered dynamically around dominant spectral harmonics* |
+
+| FFT Nyquist Span Select (`07_fft_span.png`) | FFT Linear Magnitude Scale (`08_fft_linear.png`) |
+|:---:|:---:|
+| ![FFT Span](images/screens/07_fft_span.png) | ![FFT Linear](images/screens/08_fft_linear.png) |
+| *Selectable frequency span ($0 \dots 75\text{ kHz}$) and horizontal bin resolution* | *Linear magnitude mode displaying raw proportional voltage amplitude per bin* |
 
 ---
 
@@ -295,15 +321,282 @@ The Web UI transforms your computer or tablet into a full-size lab oscilloscope 
 
 ---
 
-### 7.3 Web REST API Reference
+### 7.3 Machine-to-Machine & LLM Agent HTTP REST API
 
-| Endpoint | Method | Description |
+PocketDSO exposes a complete REST API over HTTP, allowing external scripts, automated CI/CD hardware-in-the-loop runners, and **autonomous AI/LLM coding agents** (e.g., Claude Code, Gemini CLI, Antigravity, OpenAI Assistants) to fully monitor, measure, diagnose, tune, and visually verify the physical instrument over local Wi-Fi.
+
+#### 7.3.1 API Endpoint Summary
+
+| Endpoint | Method | Response | Description |
+|:---|:---:|:---:|:---|
+| `/` or `/index.html` | `GET` | `text/html` | Embedded HTML5/Canvas oscilloscope web application |
+| `/api/metrics` | `GET` | `application/json` | Real-time measurement telemetry, frequency, voltages, battery, and network stats |
+| `/api/state` | `GET` | `application/json` | Complete machine-readable settings snapshot (all indices, flags, and actual $f_s$) |
+| `/api/waveform` | `GET` | `application/json` | 320-point CH1/CH2 downsampled display trace coordinates and trigger level |
+| `/api/fft` | `GET` | `application/json` | 1024-point FFT spectrum analysis, peak frequency, magnitude, and detected harmonic peaks |
+| `/api/set` | `GET` / `POST` | `text/plain` | Dynamic parameter modification engine (accepts multi-parameter queries) |
+| `/api/tap` | `GET` | `application/json` | Programmatic touchscreen emulation in landscape space (`?x=...&y=...`) |
+| `/api/screenshot` | `GET` | `application/octet-stream` | Raw binary framebuffer stream (`DSOS` format) decoded by `screenshot.js` into lossless PNG |
+| `/api/save` | `GET` | `text/plain` | Forces immediate NVS flash commit of current settings |
+| `/api/reboot` | `GET` | `text/plain` | Remote MCU restart (`?save=1` to commit settings first) |
+
+---
+
+#### 7.3.2 Real-Time Telemetry: `GET /api/metrics`
+
+Returns live telemetry for automated monitoring and LLM observation:
+
+```bash
+curl -s http://pocketdso.local/api/metrics | jq
+```
+
+```json
+{
+  "dc": 1.65,
+  "ac": 1.65,
+  "vpp": 3.30,
+  "freq": 1000.0,
+  "duty": 50.0,
+  "fs": 200000,
+  "timeBaseIdx": 3,
+  "timeBaseStr": "200us",
+  "vDivIdx": 3,
+  "vDivStr": "1V",
+  "autoT": 1,
+  "autoV": 1,
+  "running": 1,
+  "acCoupled": 0,
+  "ch2Mode": 1,
+  "probeIdx": 1,
+  "probeBIdx": 2,
+  "selfTest": 0,
+  "trigMode": 0,
+  "trigVolts": 1.65,
+  "calFreqIdx": 1,
+  "batVolts": 4.18,
+  "batPct": 100,
+  "ip": "192.168.1.142",
+  "ssid": "HomeLab_WiFi",
+  "rssi": -55,
+  "bars": 4,
+  "gw": "192.168.1.1",
+  "mac": "24:EC:4A:12:34:56",
+  "clients": 1,
+  "httpReqs": 142,
+  "ch2dc": 0.000,
+  "ch2ac": 0.000,
+  "ch2vpp": 0.000,
+  "ch2freq": 0.0
+}
+```
+
+*Note: `ch2dc`, `ch2ac`, `ch2vpp`, and `ch2freq` report `0` when `ch2Mode == 0` (OFF).*
+
+---
+
+#### 7.3.3 Full Configuration State Snapshot: `GET /api/state`
+
+Provides an LLM agent with an unambiguous state vector for deterministic test verification:
+
+```bash
+curl -s http://pocketdso.local/api/state | jq
+```
+
+```json
+{
+  "fw": "2.0",
+  "trigVolts": 1.650,
+  "timeBaseIdx": 3,
+  "vDivIdx": 3,
+  "sampleRateIdx": 3,
+  "probeIdx": 1,
+  "probeBIdx": 2,
+  "calFreqIdx": 1,
+  "ch2Mode": 1,
+  "trigMode": 0,
+  "hystIdx": 1,
+  "brightnessIdx": 3,
+  "fftSpanIdx": 1,
+  "fftLogScale": 1,
+  "fftZoomIdx": 0,
+  "autoTimebase": 1,
+  "autoVolts": 1,
+  "acCoupled": 0,
+  "selfTest": 0,
+  "userSetTrig": 0,
+  "actualFs": 198412,
+  "captureSamples": 1024
+}
+```
+
+---
+
+#### 7.3.4 FFT Frequency Spectrum Analysis: `GET /api/fft`
+
+Returns the 1024-point FFT spectrum and automated harmonic peaks:
+
+```bash
+curl -s http://pocketdso.local/api/fft | jq
+```
+
+```json
+{
+  "peakFreq": 1000.0,
+  "peakMag": 0.9850,
+  "binHz": 48.828,
+  "fs": 200000,
+  "thr": 10,
+  "zoom": 0,
+  "f0": 0.0,
+  "f1": 25000.0,
+  "peaks": [
+    { "f": 1000.0, "m": 1000, "i": 20 },
+    { "f": 3000.0, "m": 332, "i": 61 },
+    { "f": 5000.0, "m": 198, "i": 102 }
+  ],
+  "bins": [ 0, 12, 45, 1000, 52 ]
+}
+```
+
+---
+
+#### 7.3.5 Remote Parameter Tuning Engine: `GET|POST /api/set`
+
+Change any instrument setting dynamically via query parameters:
+
+```bash
+# Enable loopback calibrator, rising trigger, auto-scaling:
+curl -s "http://pocketdso.local/api/set?selfTest=1&calFreqIdx=1&trigMode=0&auto=1"
+
+# Set manual 100 µs/div, 0.5 V/div, AC coupling:
+curl -s "http://pocketdso.local/api/set?timeBaseIdx=2&vDivIdx=2&acCoupled=1"
+```
+
+| Parameter | Type / Range | Description |
 |:---|:---:|:---|
-| `/` | `GET` | Responsive dark-mode HTML5/Canvas dashboard (served from Flash `PROGMEM`) |
-| `/ws` | `WebSocket` | Real-time push stream of 320-point waveform buffers and live telemetry |
-| `/api/metrics` | `GET` | Returns JSON telemetry (`dc`, `ac`, `vpp`, `freq`, `ch2Mode`, `selfTest`, `timeBaseStr`, `vDivStr`, `batVolts`, `batPct`) |
-| `/api/waveform` | `GET` | Returns high-resolution 320-point JSON array for CH1 and CH2 |
-| `/api/set` | `GET` | Updates parameters: `autoTimebase=0\|1`, `autoVolts=0\|1`, `timeBaseIdx=0..10`, `vDivIdx=0..4`, `running=0\|1`, `acCoupled=0\|1`, `ch2Mode=0\|1\|2`, `trigMode=0..3`, `calFreqIdx=0..3` |
+| `running` | `0` or `1` / `bool` | `0` = Freeze acquisition (`HOLD`), `1` = Live acquisition (`RUN`) |
+| `auto` / `autoset` | `0` or `1` / `bool` | Triggers master auto-prescaling for both timebase and voltage |
+| `autoT` / `autoTimebase`| `0` or `1` / `bool` | Enables/disables independent automatic horizontal timebase selection |
+| `autoV` / `autoVolts` | `0` or `1` / `bool` | Enables/disables independent automatic vertical voltage scale selection |
+| `timeBaseIdx` | `0 .. 10` | `0`: 20µs, `1`: 50µs, `2`: 100µs, `3`: 200µs, `4`: 500µs, `5`: 1ms, `6`: 2ms, `7`: 5ms, `8`: 10ms, `9`: 20ms, `10`: 50ms/div |
+| `vDivIdx` | `0 .. 6` | `0`: 0.1V, `1`: 0.2V, `2`: 0.5V, `3`: 1V, `4`: 2V, `5`: 5V, `6`: 10V/div |
+| `probeIdx` | `0 .. 3` | Channel 1 probe attenuation: `0`: 1x (3.3V), `1`: 2x (6.6V), `2`: 4x (13.2V), `3`: 10x (33V) |
+| `probeBIdx` | `0 .. 3` | Channel 2 probe attenuation: `0`: 1x, `1`: 2x, `2`: 4x, `3`: 10x |
+| `ch2Mode` | `0 .. 2` | Channel 2 operation: `0`: OFF, `1`: Analog CH2, `2`: Digital Logic Analyzer (`[D1]`) |
+| `acCoupled` | `0` or `1` / `bool` | `0`: DC + AC coupling, `1`: AC-only coupling (strips DC offset) |
+| `trigMode` | `0 .. 3` | `0`: Rising Edge (`^`), `1`: Falling Edge (`v`), `2`: Free Run, `3`: Single Shot (`!`) |
+| `trigVolts` | `float` | Exact trigger voltage threshold in volts (e.g. `1.65`) |
+| `trigAuto` | `1` | Auto-calculates and centers the trigger threshold at the waveform DC midpoint |
+| `single` | `1` | Arms the single-shot trigger engine and awaits transient edge |
+| `hystIdx` | `0 .. 3` | Trigger noise hysteresis: `0`: 25mV, `1`: 50mV, `2`: 100mV, `3`: 200mV |
+| `calFreqIdx` | `0 .. 3` | Onboard `GPIO7` square-wave calibration generator: `0`: OFF, `1`: 1 kHz, `2`: 10 kHz, `3`: 50 kHz |
+| `selfTest` | `0` or `1` / `bool` | `0`: Normal physical probe pins (`GPIO6`/`GPIO5`), `1`: 0-Wire internal loopback generator |
+| `brightness` | `0 .. 3` | LCD backlight level: `0`: 15%, `1`: 40%, `2`: 70%, `3`: 100% |
+| `fftLog` | `0` or `1` / `bool` | FFT magnitude scale: `0`: Linear, `1`: Logarithmic dB |
+| `fftSpan` | `0 .. 3` | FFT sampling span: `0`: 20 kS/s, `1`: 50 kS/s, `2`: 100 kS/s, `3`: 200 kS/s |
+| `fftZoom` | `0 .. 4` | FFT horizontal zoom: `0`: AUTO, `1`: FULL, `2`: 2x, `3`: 4x, `4`: 8x |
+| `fftThr` | `1 .. 100` | FFT harmonic peak detection threshold (% of dominant peak) |
+| `reconnect` | `1` | Forces Wi-Fi subsystem to re-probe IP and reconnect |
+
+---
+
+#### 7.3.6 Programmatic Touchscreen Emulation: `GET /api/tap`
+
+Allows agents and automation scripts to simulate finger touches on the physical LCD screen in landscape space ($0 \le x < 320, 0 \le y < 172$):
+
+```bash
+# Tap the MENU button (top right: x=283, y=13)
+curl -s "http://pocketdso.local/api/tap?x=283&y=13"
+# Response: {"ok":true,"x":283,"y":13,"act":2,"screen":1,"tab":0}
+
+# Tap the "DONE" button to exit menu (x=280, y=16)
+curl -s "http://pocketdso.local/api/tap?x=280&y=16"
+# Response: {"ok":true,"x":280,"y":16,"act":4,"screen":0,"tab":0}
+```
+
+##### Key Screen Coordinates for Automation & Agents:
+
+| Screen | Target Control | Landscape Coordinate `(X, Y)` | Dispatched Action |
+|:---|:---|:---:|:---|
+| **Scope** | Top `[AUTO]` Badge | `(27, 13)` | `ACT_TOGGLE_AUTO` |
+| **Scope** | Top `[FFT]` Button | `(182, 13)` | `ACT_OPEN_FFT` |
+| **Scope** | Top Battery / USB Icon | `(212, 13)` | `ACT_OPEN_SYS` (opens SYS tab) |
+| **Scope** | Top Wi-Fi Icon | `(239, 13)` | `ACT_OPEN_NET` (opens WIFI tab) |
+| **Scope** | Top `[⚙ MENU]` Button | `(283, 13)` | `ACT_OPEN_MENU` |
+| **Scope** | Bottom `AUTO SCALE` | `(43, 155)` | `ACT_TOGGLE_AUTO` |
+| **Scope** | Bottom `T/div ◀` / `▶` | `(60, 155)` / `(110, 155)` | `ACT_TB_PREV` / `ACT_TB_NEXT` |
+| **Scope** | Bottom `V/div ◀` / `▶` | `(180, 155)` / `(240, 155)` | `ACT_VDIV_PREV` / `ACT_VDIV_NEXT` |
+| **Scope** | Bottom `RUN / HOLD` | `(277, 155)` | `ACT_RUN_TOGGLE` |
+| **Settings** | Tab 1 `[SCOPE]` | `(33, 16)` | `ACT_TAB_SCOPE` |
+| **Settings** | Tab 2 `[TRIG]` | `(80, 16)` | `ACT_TAB_TRIG` |
+| **Settings** | Tab 3 `[I/O]` | `(127, 16)` | `ACT_TAB_IO` |
+| **Settings** | Tab 4 `[WIFI]` | `(174, 16)` | `ACT_TAB_NET` |
+| **Settings** | Tab 5 `[SYS]` | `(221, 16)` | `ACT_TAB_SYS` |
+| **Settings** | Top `[DONE]` Button | `(280, 16)` | `ACT_CLOSE_MENU` (Instant return) |
+| **FFT** | Top `[◀ SCOPE]` Button | `(38, 13)` | `ACT_CLOSE_FFT` |
+
+---
+
+#### 7.3.7 Zero-Dependency Remote Screenshot Capture: `screenshot.js`
+
+PocketDSO includes a clean, zero-dependency Node.js screenshot utility (`screenshot.js`) that captures the exact physical display framebuffer over Wi-Fi via `GET /api/screenshot` and saves it as a lossless PNG:
+
+```bash
+# Capture single screenshot (saves to dso_YYYYMMDD-HHMMSS.png)
+node screenshot.js
+
+# Capture to a specific file using the device IP or mDNS name
+node screenshot.js --host pocketdso.local --out my_capture.png
+
+# Continuous monitoring: capture a frame every 2 seconds
+node screenshot.js --watch 2 --out live.png
+```
+
+- **Zero NPM dependencies**: Uses Node's built-in `fetch` and `zlib` for PNG encoding.
+- **Pixel-perfect fidelity**: Decodes the raw 262K-color indexed framebuffer and RGB565 palette directly from the ESP32-C6 memory.
+
+---
+
+#### 7.3.8 AI & LLM Agent Integration Guide
+
+Autonomous LLM agents (such as Claude Code, Gemini CLI, Antigravity, or custom LangChain/AutoGen agents) can use PocketDSO to execute automated hardware-in-the-loop debugging, circuit validation, and interactive electronics lab testing.
+
+##### Example Python Agent Inspection Script
+
+```python
+import json
+import urllib.request
+import subprocess
+
+DSO_HOST = "http://pocketdso.local"
+
+def dso_get(endpoint):
+    with urllib.request.urlopen(f"{DSO_HOST}{endpoint}", timeout=5) as res:
+        return json.loads(res.read().decode())
+
+def dso_set(params):
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    with urllib.request.urlopen(f"{DSO_HOST}/api/set?{query}", timeout=5) as res:
+        return res.read().decode()
+
+# Step 1: LLM Agent reads live telemetry
+telemetry = dso_get("/api/metrics")
+print(f"Detected Signal: {telemetry['freq']:.1f} Hz, {telemetry['vpp']:.2f} Vpp (DC: {telemetry['dc']:.2f} V)")
+
+# Step 2: If signal amplitude is small, agent optimizes the vertical scale
+if telemetry['vpp'] < 1.0:
+    print("Signal is under 1V — setting vertical scale to 0.2V/div")
+    dso_set({"vDivIdx": 1, "autoV": 0})
+
+# Step 3: Agent checks frequency spectrum for harmonic distortion
+fft_data = dso_get("/api/fft")
+peaks = fft_data.get("peaks", [])
+print("Spectral Harmonics Detected:", [f"{p['f']} Hz ({p['m']/10:.1f}%)" for p in peaks])
+
+# Step 4: Agent takes a screenshot for multimodal vision inspection
+subprocess.run(["node", "screenshot.js", "--host", "pocketdso.local", "--out", "agent_evidence.png"], check=True)
+print("Saved agent_evidence.png for visual verification.")
+```
 
 ---
 
@@ -338,6 +631,7 @@ PocketDSO/
 ├── platformio.ini                  # PlatformIO configuration pointing to oscilloscope/
 ├── electronics_schematic.png       # Complete hardware schematic and probe divider circuits
 ├── ui_finger_friendly.png          # UI geometry and touch-zone ergonomic reference
+├── screenshot.js                   # Zero-dependency Node.js Wi-Fi screenshot grabber & PNG decoder
 ├── oscilloscope/                   # Firmware source directory
 │   ├── oscilloscope.ino            # Main firmware (JD9853 LCD driver, AXS5106L Touch, WebUI server)
 │   ├── dso_core.h                  # Header-only core DSP (FFT, Auto-Scale, Metrics, Hit-Testing, NVS)
@@ -349,23 +643,33 @@ PocketDSO/
 │   │   ├── real_fft_spectrum.jpg   # 128-bin FFT spectrum running on physical board
 │   │   ├── real_menu_scope.jpg     # SCOPE settings menu on physical board
 │   │   └── real_menu_sys.jpg       # SYS diagnostics menu on physical board
-│   └── screens/                    # High-resolution software UI screen renders
+│   └── screens/                    # Lossless 320x172 screen captures direct from live hardware
 │       ├── 01_scope_main.png       # Main oscilloscope display
-│       ├── 02_scope_loopback_offline.png # 0-Wire loopback offline display
-│       ├── 03_scope_mso_hold.png   # Mixed-signal analog + logic analyzer trace
-│       ├── 04_fft_auto_zoom.png    # FFT frequency spectrum with Auto-Zoom
-│       ├── 05_fft_full.png         # FFT frequency spectrum full Nyquist span
-│       ├── 06_fft_8x_linear.png    # FFT spectrum 8x linear magnitude
-│       ├── 07_menu_scope.png       # Settings modal: SCOPE tab
-│       ├── 08_menu_trig.png        # Settings modal: TRIG tab
-│       ├── 09_menu_io.png          # Settings modal: I/O tab
-│       ├── 10_menu_wifi.png        # Settings modal: WIFI tab
-│       ├── 11_menu_sys.png         # Settings modal: SYS tab
-│       └── 12_menu_sys_usb_reset_armed.png # Settings modal: Factory reset confirmation
-├── test/                           # Unit test and simulation harness
-│   ├── test_core.cpp               # C++ native test suite (Sine, Square, FFT, Touch, NVS)
+│       ├── 02_menu_scope_tab.png   # Settings modal: SCOPE tab
+│       ├── 03_tab_trig.png         # Settings modal: TRIG tab
+│       ├── 03_tab_io.png           # Settings modal: I/O calibration tab
+│       ├── 03_tab_wifi.png         # Settings modal: WIFI network configuration tab
+│       ├── 03_tab_sys.png          # Settings modal: SYS telemetry and diagnostic tab
+│       ├── 04_back_to_scope.png    # Live scope return state
+│       ├── 05_fft.png              # FFT frequency spectrum analyzer
+│       ├── 06_fft_zoom.png         # FFT spectrum with horizontal zoom
+│       ├── 07_fft_span.png         # FFT spectrum sampling span selection
+│       ├── 08_fft_linear.png       # FFT linear magnitude scale
+│       ├── 10_back_from_fft.png    # Return from FFT to scope
+│       ├── 12_badge_A_T.png        # Auto timebase badge toggle
+│       ├── 13_bottom_auto.png      # Master auto-scale toggle
+│       ├── 14_run_hold.png         # Live acquisition freeze / hold state
+│       └── 15_final.png            # Dual trace waveform state
+├── test/                           # Unified test and verification suite
+│   ├── README.md                   # Test documentation, requirements, and release checklist
+│   ├── test_core.cpp               # C++ native unit test suite (Sine, Square, FFT, Touch, NVS)
 │   ├── test_web_server.js          # Node.js mock HTTP and WebSocket server for Web UI testing
-│   └── web_ui_test.html            # Standalone Web UI testing canvas
+│   ├── web_ui_test.html            # Standalone Web UI testing canvas
+│   ├── dso_remote.js               # Zero-dependency driver library for PocketDSO remote API
+│   ├── e2e_01_settings_persistence.js # E2E: /api/state, /api/set, and NVS persistence across reboots
+│   ├── e2e_02_measurement.js       # E2E: Signal measurement accuracy and auto-scaling
+│   ├── e2e_03_ui_tour.js           # E2E: Automated touchscreen exploration & visual regression captures
+│   └── captures/                   # Directory for generated visual test evidence captures
 └── doc/
     └── SW/
         └── README.md               # In-depth software and DSP architectural documentation
@@ -375,13 +679,17 @@ PocketDSO/
 
 ---
 
-## 10. Running Unit Tests
+## 10. Verification and Testing
 
-PocketDSO includes a native C++ test suite (`test/test_core.cpp`) that verifies the DSP pipeline, FFT accuracy, auto-scale algorithms, settings serialization, and touch hit-testing without needing physical hardware:
+PocketDSO includes a comprehensive, unified test suite in `test/` covering host-based C++ unit tests, offline Web UI simulation, and remote hardware-in-the-loop (HITL) tests over Wi-Fi.
+
+### 10.1 Host-Based C++ Unit Tests
+
+Verifies the DSP pipeline, FFT accuracy, auto-scale algorithms, settings serialization, and touch hit-testing without needing physical hardware:
 
 ```bash
 # Compile and run native C++ tests
-clang++ -std=c++17 test/test_core.cpp -o test/test_core
+clang++ -std=c++17 -I"oscilloscope" test/test_core.cpp -o test/test_core
 ./test/test_core
 ```
 
@@ -391,6 +699,24 @@ To preview and test the Web UI locally on your computer:
 node test/test_web_server.js
 # Open http://localhost:8080 in your browser
 ```
+
+### 10.2 Hardware-in-the-Loop End-to-End Test Suite
+
+Exercises the physical instrument over Wi-Fi using the REST API (with zero npm dependencies):
+
+```bash
+cd test
+# 1. Validate settings schema, remote tuning, and reboot persistence
+node e2e_01_settings_persistence.js  --host pocketdso.local
+
+# 2. Validate loopback signal measurement accuracy & auto-scaling
+node e2e_02_measurement.js           --host pocketdso.local
+
+# 3. Perform automated UI navigation tour and generate screenshot captures
+node e2e_03_ui_tour.js               --host pocketdso.local --out captures
+```
+
+See [test/README.md](file:///Users/moisisv/Projects/brainstorms/esp32%20oscillator/test/README.md) for full release checklist procedures and test architecture details.
 
 ---
 
