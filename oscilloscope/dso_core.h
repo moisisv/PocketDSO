@@ -32,7 +32,7 @@
 #include <string.h>
 #include <math.h>
 
-#define DSO_FW_VERSION "2.1.0"
+#define DSO_FW_VERSION "2.2.0"
 
 namespace dso {
 

@@ -49,6 +49,17 @@
 // Web server (set to 1 to enable Wi-Fi remote Web UI & WebSocket streaming)
 #define ENABLE_WEB_UI 1
 
+// Verbose runtime debug prints ([BAT] every 2 s, [API] per set, [NVS] on save).
+// USB-CDC writes can stall the Arduino loop for seconds when no terminal is
+// reading the port, so keep this 0 for normal operation / release builds.
+#define DEBUG_SERIAL 0
+
+#if DEBUG_SERIAL
+#define DBG_PRINT(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_PRINT(...) do {} while (0)
+#endif
+
 #if ENABLE_WEB_UI
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -1100,12 +1111,12 @@ static void updateBatteryStatus() {
   if (millis() - s_lastBatDbg >= 2000) {
     s_lastBatDbg = millis();
 #if BAT_CELL_INSTALLED
-    Serial.printf("[BAT] raw=%u  vBat=%.2fV  pct=%u%%  mode=%s\n",
-                  (unsigned)rawBat, (double)g_batVolts, (unsigned)g_batPct,
-                  (g_batVolts >= dso::BATTERY_PRESENT_MIN_V) ? "CELL" : "USB");
+    DBG_PRINT("[BAT] raw=%u  vBat=%.2fV  pct=%u%%  mode=%s\n",
+              (unsigned)rawBat, (double)g_batVolts, (unsigned)g_batPct,
+              (g_batVolts >= dso::BATTERY_PRESENT_MIN_V) ? "CELL" : "USB");
 #else
-    Serial.printf("[BAT] no cell compiled in (BAT_CELL_INSTALLED=0)  mode=USB  pct=%u%%\n",
-                  (unsigned)g_batPct);
+    DBG_PRINT("[BAT] no cell compiled in (BAT_CELL_INSTALLED=0)  mode=USB  pct=%u%%\n",
+              (unsigned)g_batPct);
 #endif
   }
 }
@@ -1134,12 +1145,22 @@ static void saveSettings() {
   prefs.putBytes("cfg", blob, sizeof(blob));
   prefs.end();
   g_savedSettings = g_settings;
-  Serial.println("[NVS] Settings saved to flash.");
+  DBG_PRINT("[NVS] Settings saved to flash.");
 }
 
 // =============================================================================
 // 6. SMART NETWORK MANAGER (Default .100 IP with Collision Fallback)
 // =============================================================================
+
+// Loop-pass watchdog: records the worst gap between two loop() passes and the
+// phase the firmware was in, so lag / freezes can be diagnosed over HTTP
+// (/api/sys) without a serial terminal. Phases:
+//   0 idle  1 handleClient  2 touch  3 battery/RSSI  4 capture  5 render  6 NVS save
+static uint32_t g_loopGapMaxMs  = 0;   // worst gap since boot (ms)
+static uint32_t g_loopGapAtMs   = 0;   // when it happened
+static uint8_t  g_loopGapPhase  = 0;   // phase active before the gap
+static uint8_t  g_loopPhase     = 0;   // current phase
+static uint32_t g_prevLoopMs    = 0;
 
 #if ENABLE_WEB_UI
 static bool g_webServerStarted = false;
@@ -2276,7 +2297,9 @@ static void handleTouchInput() {
 // Allocation-free JSON writer into one static buffer (handlers run
 // sequentially from loop()). Replaces String concatenation, which caused
 // hundreds of heap allocations per request and fragmented the Wi-Fi heap.
-static char g_jsonBuf[3072];
+// 4608 B: dual-channel /api/waveform needs ~3.3 KB (320 x 2 numbers + wrapper);
+// a smaller buffer silently truncated the JSON (broken CH2 on the web UI).
+static char g_jsonBuf[4608];
 
 struct JsonOut {
   size_t len = 0;
@@ -2553,8 +2576,8 @@ static void startWebServerOnce() {
         continue;
       }
       fx |= dso::applyParam(g_settings, key.c_str(), val.c_str());
-      Serial.printf("[API] Set %s = %s (ch2Mode=%d, autoT=%d, autoV=%d)\n",
-                    key.c_str(), val.c_str(), g_settings.ch2Mode, g_settings.autoTimebase, g_settings.autoVolts);
+      DBG_PRINT("[API] Set %s = %s (ch2Mode=%d, autoT=%d, autoV=%d)\n",
+                key.c_str(), val.c_str(), g_settings.ch2Mode, g_settings.autoTimebase, g_settings.autoVolts);
     }
     if (fx & dso::FX_CAL) updateCalibrationGenerator();
     if (fx & dso::FX_BACKLIGHT) updateBacklight();
@@ -2587,6 +2610,27 @@ static void startWebServerOnce() {
       g_settings.acCoupled ? 1 : 0, g_settings.selfTest ? 1 : 0,
       g_settings.userSetTrig ? 1 : 0, (double)g_actualSampleRateHz,
       (unsigned)dso::CAPTURE_SAMPLES);
+    server.send(200, "application/json", buf);
+  });
+
+  // Diagnostics: heap health (leak detection) + worst loop-pass gap (lag
+  // forensics). freeHeap trending down over hours = leak; minFreeHeap close
+  // to zero = fragmentation/OOM risk.
+  server.on("/api/sys", HTTP_GET, [](){
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Connection", "close");
+    g_netStats.httpReqs++;
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+      "{\"fw\":\"" DSO_FW_VERSION "\",\"uptimeS\":%lu,"
+      "\"freeHeap\":%u,\"minFreeHeap\":%u,\"maxAllocBlock\":%u,"
+      "\"loopGapMaxMs\":%lu,\"loopGapAtS\":%lu,\"loopGapPhase\":%u,"
+      "\"httpReqs\":%lu}",
+      (unsigned long)(millis() / 1000),
+      (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+      (unsigned)ESP.getMaxAllocHeap(),
+      (unsigned long)g_loopGapMaxMs, (unsigned long)(g_loopGapAtMs / 1000),
+      (unsigned)g_loopGapPhase, (unsigned long)g_netStats.httpReqs);
     server.send(200, "application/json", buf);
   });
 
@@ -2720,12 +2764,26 @@ void loop() {
   return;
 #endif
 
+  // Loop-gap watchdog: measure the gap since the previous pass
+  uint32_t loopNowMs = millis();
+  if (g_prevLoopMs != 0) {
+    uint32_t gap = loopNowMs - g_prevLoopMs;
+    if (gap > g_loopGapMaxMs) {
+      g_loopGapMaxMs  = gap;
+      g_loopGapAtMs   = loopNowMs;
+      g_loopGapPhase  = g_loopPhase; // phase the firmware was in during that pass
+    }
+  }
+  g_prevLoopMs = loopNowMs;
+
 #if ENABLE_WEB_UI
   if (g_webServerStarted) {
+    g_loopPhase = 1;
     server.handleClient();
     // Debounced NVS commit for /api-set & web-UI changes
     if (g_apiSavePendingMs != 0 && (int32_t)(millis() - g_apiSavePendingMs) >= 0) {
       g_apiSavePendingMs = 0;
+      g_loopPhase = 6;
       saveSettings();
     }
   }
@@ -2738,6 +2796,7 @@ void loop() {
   static uint32_t lastTouchMs = 0;
   if (now - lastTouchMs >= 10) {
     lastTouchMs = now;
+    g_loopPhase = 2;
     handleTouchInput();
   }
 
@@ -2745,6 +2804,7 @@ void loop() {
   static uint32_t lastBatMs = 0;
   if (now - lastBatMs >= 2000) {
     lastBatMs = now;
+    g_loopPhase = 3;
     updateBatteryStatus();
 
 #if ENABLE_WEB_UI
@@ -2763,6 +2823,7 @@ void loop() {
 
     if (g_settings.running && g_ui.screen != dso::SCR_SETTINGS) {
       captured = true;
+      g_loopPhase = 4;
       captureWaveforms();
       g_metricsCh1 = dso::analyze(g_ch1Volts, dso::CAPTURE_SAMPLES, g_actualSampleRateHz, dso::HYST_VOLTS[g_settings.hystIdx]);
       if (g_settings.ch2Mode != dso::CH2_OFF) {
@@ -2785,6 +2846,7 @@ void loop() {
                             armed != g_lastArmed || !dso::settingsEqual(g_lastDrawn, g_settings) ||
                             (now - g_lastRenderMs >= 500);
     if (needRender) {
+      g_loopPhase = 5;
       if (g_ui.screen == dso::SCR_SETTINGS) {
         renderSettingsModal();
       } else if (g_ui.screen == dso::SCR_FFT) {
